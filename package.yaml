@@ -1,0 +1,57 @@
+name: checked-io
+version: 0.1.0.0
+license: BSD3
+author: Brandon Chinn <brandonchinn178@gmail.com>
+maintainer: Brandon Chinn <brandonchinn178@gmail.com>
+
+synopsis: Checked IO exceptions
+description: Checked IO exceptions. See README.md for more details.
+
+extra-source-files:
+  - README.md
+  - CHANGELOG.md
+
+github: brandonchinn178/checked-io
+
+ghc-options:
+  - -Wall
+  - -Wcompat
+  - -Widentities
+  - -Wincomplete-record-updates
+  - -Wincomplete-uni-patterns
+  - -Wmissing-export-lists
+  - -Wmissing-home-modules
+  - -Wpartial-fields
+  - -Wredundant-constraints
+
+library:
+  source-dirs: src
+  dependencies:
+    - base >= 4.14 && < 5
+  default-extensions:
+    - NoImplicitPrelude
+
+tests:
+  checked-io-test:
+    main: Main.hs
+    source-dirs: test
+    dependencies:
+      - name: base
+        mixin:
+          - hiding (Prelude)
+      - name: checked-io
+        mixin:
+          - (CheckedIO.Prelude as Prelude)
+      - tasty
+      - tasty-autocollect
+      - tasty-quickcheck
+    ghc-options: >
+      -threaded
+      -rtsopts
+      -with-rtsopts=-N
+      -F -pgmF=tasty-autocollect
+    build-tools:
+      - tasty-autocollect:tasty-autocollect
+    when:
+      - condition: false
+        other-modules: Paths_checked_io

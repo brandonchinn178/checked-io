@@ -1,0 +1,64 @@
+cabal-version: 2.0
+
+-- This file has been generated from package.yaml by hpack version 0.35.0.
+--
+-- see: https://github.com/sol/hpack
+
+name:           checked-io
+version:        0.1.0.0
+synopsis:       Checked IO exceptions
+description:    Checked IO exceptions. See README.md for more details.
+homepage:       https://github.com/brandonchinn178/checked-io#readme
+bug-reports:    https://github.com/brandonchinn178/checked-io/issues
+author:         Brandon Chinn <brandonchinn178@gmail.com>
+maintainer:     Brandon Chinn <brandonchinn178@gmail.com>
+license:        BSD3
+build-type:     Simple
+extra-source-files:
+    README.md
+    CHANGELOG.md
+
+source-repository head
+  type: git
+  location: https://github.com/brandonchinn178/checked-io
+
+library
+  exposed-modules:
+      CheckedIO
+      CheckedIO.Core
+      CheckedIO.Prelude
+      CheckedIO.Prelude.NoIO
+  other-modules:
+      Paths_checked_io
+  autogen-modules:
+      Paths_checked_io
+  hs-source-dirs:
+      src
+  default-extensions:
+      NoImplicitPrelude
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  build-depends:
+      base >=4.14 && <5
+  default-language: Haskell2010
+
+test-suite checked-io-test
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  other-modules:
+      CheckedIO.CoreTest
+  hs-source-dirs:
+      test
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N -F -pgmF=tasty-autocollect
+
+  build-tool-depends:
+      tasty-autocollect:tasty-autocollect
+  build-depends:
+      base
+    , checked-io
+    , tasty
+    , tasty-autocollect
+    , tasty-quickcheck
+  mixins:
+      base hiding (Prelude)
+    , checked-io (CheckedIO.Prelude as Prelude)
+  default-language: Haskell2010
