@@ -236,7 +236,10 @@ unsafeCheckUIO = fmap (either foundError id) . toUIO . checkIO
 uncheckIOE :: IOE e a -> UnsafeIO a
 uncheckIOE = GHC.handle go . unIOE
   where
-    go (SomeException _ e) = GHC.throwIO e
+    go (SomeException _ e) =
+      case cast e of
+        Just (SomeSyncException e') -> GHC.throwIO e'
+        _ -> GHC.throwIO e
 
 -- | Unchecks an 'UIO' action back into the normal 'GHC.IO' monad.
 --
