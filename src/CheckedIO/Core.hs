@@ -29,6 +29,8 @@ module CheckedIO.Core (
   mapError,
   liftError,
   throw,
+  throwTo,
+  throwImprecise,
   catch,
   try,
 
@@ -47,6 +49,7 @@ module CheckedIO.Core (
   SomeSyncException (..),
 ) where
 
+import Control.Concurrent (ThreadId)
 import Control.Exception (Exception (..))
 import qualified Control.Exception as GHC
 import qualified Control.Exception.Base as GHC
@@ -157,6 +160,12 @@ liftError = mapError SomeSyncException
 throw :: Exception e => e -> IOE e a
 throw = UnsafeIOE . GHC.throwIO . SomeException SyncExceptionType
 
+throwTo :: Exception e => ThreadId -> e -> UIO ()
+throwTo tid = UnsafeUIO . GHC.throwTo tid . SomeException AsyncExceptionType
+
+throwImprecise :: Exception e => e -> a
+throwImprecise = GHC.throw . SomeException ImpreciseExceptionType
+
 -- | If your handler does not throw an error, consider using 'catchUIO'.
 catch :: (HasCallStack, Exception e1, Exception e2) => IOE e1 a -> (e1 -> IOE e2 a) -> IOE e2 a
 catch m f = fromUIO $ (Right <$> m) `catchUIO` (toUIO . f)
@@ -219,11 +228,21 @@ unsafeCheckUIO = fmap (either foundError id) . toUIO . checkIO
         "unsafeCheckUIO was called on an action that unexpectedly threw an error: "
           ++ show e
 
+-- | Unchecks an 'IOE' action back into the normal 'GHC.IO' monad.
+--
+-- Note: 'IOE' wraps all exceptions into 'SomeException', and this function
+-- will unwrap them back. However, if you used 'throwImprecise', and the
+-- result hasn't been evaluated yet, it'll remain wrapped in 'SomeException'.
 uncheckIOE :: IOE e a -> UnsafeIO a
 uncheckIOE = GHC.handle go . unIOE
   where
     go (SomeException _ e) = GHC.throwIO e
 
+-- | Unchecks an 'UIO' action back into the normal 'GHC.IO' monad.
+--
+-- Note: 'UIO' wraps all exceptions into 'SomeException', and this function
+-- will unwrap them back. However, if you used 'throwImprecise', and the
+-- result hasn't been evaluated yet, it'll remain wrapped in 'SomeException'.
 uncheckUIO :: UIO a -> UnsafeIO a
 uncheckUIO = GHC.handle go . unUIO
   where

@@ -26,6 +26,7 @@ library
   exposed-modules:
       CheckedIO
       CheckedIO.Core
+      CheckedIO.Exception
       CheckedIO.Prelude
       CheckedIO.Prelude.NoIO
   other-modules:
