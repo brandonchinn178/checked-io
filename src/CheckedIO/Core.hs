@@ -287,21 +287,17 @@ unsafeCheckUIO = fmap (either foundError id) . toUIO . checkIO
         "unsafeCheckUIO was called on an action that unexpectedly threw an error: "
           ++ show e
 
--- TODO: uncheckIOE, uncheckUIO: evaluate first
--- TODO: reraise AsyncException wrapped in SomeAsyncException
-
 -- | Unchecks an 'IOE' action back into the normal 'GHC.IO' monad.
 --
 -- Note: 'IOE' wraps all exceptions into 'SomeException', and this function
 -- will unwrap them back. However, if you used 'throwImprecise', and the
 -- result hasn't been evaluated yet, it'll remain wrapped in 'SomeException'.
 uncheckIOE :: IOE e a -> UnsafeIO a
-uncheckIOE = GHC.handle go . unIOE
-  where
-    go (SomeException _ e) =
-      case cast e of
-        Just (SomeSyncException e') -> GHC.throwIO e'
-        _ -> GHC.throwIO e
+uncheckIOE m =
+  (unIOE m >>= GHC.evaluate) `GHC.catch` \case
+    SomeException SyncExceptionType e | Just (SomeSyncException e') <- cast e -> GHC.throwIO e'
+    SomeException AsyncExceptionType e -> GHC.throwIO $ GHC.SomeAsyncException e
+    SomeException _ e -> GHC.throwIO e
 
 -- | Unchecks an 'UIO' action back into the normal 'GHC.IO' monad.
 --
@@ -309,9 +305,7 @@ uncheckIOE = GHC.handle go . unIOE
 -- will unwrap them back. However, if you used 'throwImprecise', and the
 -- result hasn't been evaluated yet, it'll remain wrapped in 'SomeException'.
 uncheckUIO :: UIO a -> UnsafeIO a
-uncheckUIO = GHC.handle go . unUIO
-  where
-    go (SomeException _ e) = GHC.throwIO e
+uncheckUIO = uncheckIOE . liftUIO
 
 {----- Exceptions in IOE/UIO -----}
 
