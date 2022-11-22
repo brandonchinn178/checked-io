@@ -30,20 +30,19 @@ module CheckedIO.Core (
   liftIO,
   withRunInIO,
 
-  -- * Conversions
-  toUIO,
+  -- * Lifting UIO
   fromUIO,
   fromUIOWith,
   uioToIO,
 
-  -- * IOE operations
-  mapExceptionM,
-  liftE,
+  -- * IOE exception handling
   throw,
   throwTo,
   throwImprecise,
-  catch,
+  MonadCatchIO (..),
   try,
+  mapExceptionM,
+  liftE,
 
   -- * Interop with unchecked IO
   Main,
@@ -109,15 +108,15 @@ instance MonadUIO (IOE e) where
 --   deriving (Functor, Applicative, Monad)
 --
 -- instance MonadUIO m => MonadIOE e (ExceptT e m) where
---   liftIOE = ExceptT . liftUIO . toUIO
+--   liftIOE = ExceptT . try
 -- @
-class Monad m => MonadIOE e m | m -> e where
+class MonadUIO m => MonadIOE e m | m -> e where
   liftIOE :: IOE e a -> m a
 
 instance MonadIOE e (IOE e) where
   liftIOE = id
 instance MonadIOE Void UIO where
-  liftIOE = fmap (either absurd id) . toUIO
+  liftIOE = fmap (either absurd id) . try
 
 -- | Provide a function for running an action in the given monad in 'UIO'.
 --
@@ -149,18 +148,6 @@ instance MonadUnliftIOE e (IOE e) where
 instance MonadUnliftIOE Void UIO where
   withRunInIOE f = liftIOE (f liftUIO)
 
--- | A typeclass for monads that contain an exception that can be converted.
-class
-  (Exception e1, Exception e2, MonadUnliftIOE e1 m1, MonadUnliftIOE e2 m2) =>
-  MonadMapException m1 e1 m2 e2
-    | m1 -> e1
-    , m2 -> e2
-  where
-  mapExceptionM :: (e1 -> e2) -> m1 a -> m2 a
-
-instance (Exception e1, Exception e2) => MonadMapException (IOE e1) e1 (IOE e2) e2 where
-  mapExceptionM f = fromUIO . fmap (first f) . toUIO
-
 {----- IO convenience type -----}
 
 -- | A helper containing any synchronous exception.
@@ -177,9 +164,87 @@ liftIO = liftIOE
 withRunInIO :: MonadUnliftIO m => ((forall a. m a -> IO a) -> IO b) -> m b
 withRunInIO = withRunInIOE
 
-{----- IOE operations -----}
+{----- Lifting UIO -----}
+
+-- | Convert @UIO (Either e a)@ to @IOE e a@ (or any other monad
+-- with a @MonadIOE@ instance).
+--
+-- > fromUIO m = liftUIO m >>= either throw pure
+fromUIO ::
+  (Exception e, MonadIOE e m) =>
+  UIO (Either e a)
+  -> m a
+fromUIO = fromUIOWith id
+
+-- | Convert @UIO (Either e1 a)@ to @IOE e2 a@ (or any other monad
+-- with a @MonadIOE@ instance) with the given
+-- transformation function.
+--
+-- Same as @mapExceptionM f . fromUIO@, but more performant.
+fromUIOWith ::
+  (Exception e2, MonadIOE e2 m) =>
+  (e1 -> e2)
+  -> UIO (Either e1 a)
+  -> m a
+fromUIOWith f m = liftUIO m >>= either (throw . f) pure
+
+-- | Convert @UIO (Either e a)@ action to @IO a@ (or any other monad
+-- with a @MonadIO@ instance).
+--
+-- Same as @liftE . fromUIO@, but more performant.
+uioToIO :: (Exception e, MonadIO m) => UIO (Either e a) -> m a
+uioToIO = fromUIOWith SomeSyncException
+
+{----- IOE exception handling -----}
+
+throw :: (Exception e, MonadIOE e m) => e -> m a
+throw = liftIOE . UnsafeIOE . GHC.throwIO . SomeException SyncExceptionType
+
+throwTo :: (Exception e, MonadUIO m) => ThreadId -> e -> m ()
+throwTo tid = liftUIO . UnsafeUIO . GHC.throwTo tid . SomeException AsyncExceptionType
+
+throwImprecise :: Exception e => e -> a
+throwImprecise = GHC.throw . SomeException ImpreciseExceptionType
+
+-- TODO: catchAny
+class (MonadIOE e ioe, Exception e) => MonadCatchIO e ioe | ioe -> e where
+  {-# MINIMAL catch #-}
+
+  catch :: MonadUnliftUIO uio => ioe a -> (e -> uio a) -> uio a
+
+  -- | Same as 'catch', except allows throwing exceptions in the handler
+  catchE :: MonadCatchIO e' ioe' => ioe a -> (e -> ioe' a) -> ioe' a
+  catchE m f = fromUIO $ (Right <$> m) `catch` (try . f)
+
+instance Exception e => MonadCatchIO e (IOE e) where
+  catch (UnsafeIOE m) f =
+    withRunInUIO $ \run ->
+      UnsafeUIO $
+        m `GHC.catch` \case
+          SomeException SyncExceptionType e ->
+            case cast e of
+              Just e' -> unUIO (run $ f e')
+              Nothing ->
+                error $
+                  "checked-io invariant violation: IOE contained an unexpected synchronous exception: "
+                    ++ show e
+          e -> GHC.throwIO e
+
+-- | Convert @IOE e a@ to @UIO (Either e a)@
+try :: (MonadCatchIO e ioe, MonadUIO uio) => ioe a -> uio (Either e a)
+try m = liftUIO $ (Right <$> m) `catch` (pure . Left)
+
+mapExceptionM ::
+  forall e1 e2 m1 m2 a.
+  (MonadCatchIO e1 m1, MonadCatchIO e2 m2) =>
+  (e1 -> e2)
+  -> m1 a
+  -> m2 a
+mapExceptionM f = fromUIO . fmap (first f) . try
 
 -- | Lift an exception to 'SomeSyncException', useful for converting to 'IO'.
+--
+-- > liftE = mapExceptionM SomeSyncException
 --
 -- === __Example__
 --
@@ -191,63 +256,11 @@ withRunInIO = withRunInIOE
 -- @
 liftE ::
   forall e m1 m2 a.
-  (MonadMapException m1 e m2 SomeSyncException) =>
+  (MonadCatchIO e m1, MonadCatchIO SomeSyncException m2) =>
   m1 a
   -> m2 a
 liftE = mapExceptionM SomeSyncException
 
-throw :: (Exception e, MonadIOE e m) => e -> m a
-throw = liftIOE . UnsafeIOE . GHC.throwIO . SomeException SyncExceptionType
-
-throwTo :: (Exception e, MonadUIO m) => ThreadId -> e -> m ()
-throwTo tid = liftUIO . UnsafeUIO . GHC.throwTo tid . SomeException AsyncExceptionType
-
-throwImprecise :: Exception e => e -> a
-throwImprecise = GHC.throw . SomeException ImpreciseExceptionType
-
--- | If your handler does not throw an error, consider using 'catchUIO'.
-catch ::
-  (HasCallStack, Exception e1, Exception e2) =>
-  IOE e1 a
-  -> (e1 -> IOE e2 a)
-  -> IOE e2 a
-catch m f = fromUIO $ (Right <$> m) `catchUIO` (toUIO . f)
-
--- | Same as 'toUIO', except returns as an 'IOE'.
-try :: Exception e => IOE e a -> IOE e' (Either e a)
-try = liftUIO . toUIO
-
-catchUIO :: (HasCallStack, Exception e) => IOE e a -> (e -> UIO a) -> UIO a
-catchUIO (UnsafeIOE m) f =
-  UnsafeUIO $
-    m `GHC.catch` \case
-      SomeException SyncExceptionType e ->
-        case cast e of
-          Just e' -> unUIO (f e')
-          Nothing ->
-            error $
-              "checked-io invariant violation: IOE contained an unexpected synchronous exception: "
-                ++ show e
-      e -> GHC.throwIO e
-
--- TODO: catchAny
-
-{----- Conversions between UIO/IOE -----}
-
-toUIO :: (HasCallStack, Exception e) => IOE e a -> UIO (Either e a)
-toUIO m = (Right <$> m) `catchUIO` (pure . Left)
-
-fromUIO :: Exception e => UIO (Either e a) -> IOE e a
-fromUIO = fromUIOWith id
-
-fromUIOWith :: Exception e2 => (e1 -> e2) -> UIO (Either e1 a) -> IOE e2 a
-fromUIOWith f m = liftUIO m >>= either (throw . f) pure
-
--- | Convert a 'UIO' action to an 'IO' action.
---
--- Morally equivalent to @liftE . fromUIO@, but more performant.
-uioToIO :: Exception e => UIO (Either e a) -> IO a
-uioToIO = fromUIOWith SomeSyncException
 
 {----- Interop with unchecked IO -----}
 
@@ -280,7 +293,7 @@ unsafeCheckIO = mapExceptionM convert . checkIO
               ++ show e
 
 unsafeCheckUIO :: HasCallStack => UnsafeIO a -> UIO a
-unsafeCheckUIO = fmap (either foundError id) . toUIO . checkIO
+unsafeCheckUIO = fmap (either foundError id) . try . checkIO
   where
     foundError (SomeSyncException e) =
       withFrozenCallStack . error $
