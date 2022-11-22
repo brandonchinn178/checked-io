@@ -1,5 +1,4 @@
 {- AUTOCOLLECT.TEST -}
-
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
