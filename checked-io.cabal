@@ -61,5 +61,5 @@ test-suite checked-io-test
     , tasty-quickcheck
   mixins:
       base hiding (Prelude)
-    , checked-io (CheckedIO.Prelude as Prelude)
+    , checked-io (CheckedIO as Prelude)
   default-language: Haskell2010

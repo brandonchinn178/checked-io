@@ -1,4 +1,6 @@
--- | 'Prelude' without 'IO'
+{-|
+'Prelude' without 'IO'
+-}
 module CheckedIO.Prelude.NoIO (
   module Prelude,
 ) where

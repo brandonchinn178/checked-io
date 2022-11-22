@@ -1,10 +1,13 @@
+{-|
+Same as @Prelude@, except using the new 'IO' type.
+-}
 module CheckedIO.Prelude (
-  module X,
+  -- * CheckedIO.Prelude.NoIO
+  module CheckedIO.Prelude.NoIO,
+
+  -- * CheckedIO.Core
+  module CheckedIO.Core,
 ) where
 
-import CheckedIO.Core as X
-import CheckedIO.Exception as X (
-  Exception (..),
-  convertE,
- )
-import CheckedIO.Prelude.NoIO as X
+import CheckedIO.Core (IO)
+import CheckedIO.Prelude.NoIO

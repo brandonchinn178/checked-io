@@ -41,7 +41,7 @@ tests:
           - hiding (Prelude)
       - name: checked-io
         mixin:
-          - (CheckedIO.Prelude as Prelude)
+          - (CheckedIO as Prelude)
       - tasty
       - tasty-autocollect
       - tasty-quickcheck
