@@ -1,4 +1,4 @@
-resolver: lts-20.0
+resolver: nightly-2022-11-23
 
 packages:
   - ./
