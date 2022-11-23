@@ -22,14 +22,16 @@ module CheckedIO.Exception (
   convertE,
 
   -- * Exception supertypes
-  SomeException (..),
+  AnyException (..),
   SomeSyncException (..),
+  SomeException (..),
   SomeAsyncException (..),
 ) where
 
 import Control.Exception (
   Exception (..),
   SomeAsyncException (..),
+  SomeException (..),
  )
 
 import CheckedIO.Core
