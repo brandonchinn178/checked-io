@@ -66,7 +66,8 @@ import qualified Control.Exception.Base as GHC
 import Data.Bifunctor (first)
 import Data.Foldable (asum)
 import Data.Maybe (fromMaybe)
-import Data.Typeable (cast)
+import Data.Proxy (Proxy (..))
+import Data.Typeable (cast, typeOf, typeRep)
 import Data.Void (Void)
 import GHC.Stack (HasCallStack, withFrozenCallStack)
 import qualified System.IO as GHC
@@ -127,7 +128,7 @@ instance MonadRunIOE Void UIO where
 --
 -- [Identity] @withRunAsUIO (\\run -> run m) === m@
 -- [Inverse]  @withRunAsUIO (\\_ -> m) === runUIO m@
-class MonadRunUIO m => MonadRunAsUIO m where
+class MonadRunAsIOE Void m => MonadRunAsUIO m where
   withRunAsUIO :: ((forall a. m a -> UIO a) -> UIO b) -> m b
 
 instance MonadRunAsUIO UIO where
@@ -208,30 +209,46 @@ throwTo tid = runUIO . UnsafeUIO . GHC.throwTo tid . SomeException AsyncExceptio
 throwImprecise :: Exception e => e -> a
 throwImprecise = GHC.throw . SomeException ImpreciseExceptionType
 
--- TODO: catchAny (-> IOE Void), define catch + catchE with catchAny
 class (MonadRunIOE e ioe, Exception e) => MonadCatchIO e ioe | ioe -> e where
+  {-# MINIMAL catchAny #-}
+
   catch :: MonadRunAsUIO uio => ioe a -> (e -> uio a) -> uio a
-
-  -- | Same as 'catch', except allows throwing exceptions in the handler
-  catchE :: MonadRunAsIOE e' ioe' => ioe a -> (e -> ioe' a) -> ioe' a
-
-instance Exception e => MonadCatchIO e (IOE e) where
   catch m f =
     withRunAsUIO $ \run ->
       runIOE $ m `catchE` (runUIO @(IOE Void) . run . f)
 
-  catchE (UnsafeIOE m) f =
+  -- | Same as 'catch', except allows throwing exceptions in the handler
+  catchE :: MonadRunAsIOE e' ioe' => ioe a -> (e -> ioe' a) -> ioe' a
+  catchE m f =
+    m `catchAny` \case
+      Right e -> f e
+      Left e -> runIOE . UnsafeIOE . GHC.throwIO $ e
+
+  catchAny :: MonadRunAsIOE e' ioe' => ioe a -> (Either SomeException e -> ioe' a) -> ioe' a
+
+instance Exception e => MonadCatchIO e (IOE e) where
+  catchAny (UnsafeIOE m) f =
     withRunAsIOE $ \run ->
-      UnsafeIOE $
-        m `GHC.catch` \case
-          SomeException SyncExceptionType e ->
-            case cast e of
-              Just e' -> unIOE (run $ f e')
-              Nothing ->
-                error $
-                  "checked-io invariant violation: IOE contained an unexpected synchronous exception: "
-                    ++ show e
-          e -> GHC.throwIO e
+      UnsafeIOE $ m `GHC.catch` (unIOE . run . f . fromSomeException)
+    where
+      fromSomeException = \case
+        SomeException SyncExceptionType e -> Right $ castExpected e
+        e -> Left e
+
+      castExpected e =
+        case cast e of
+          Just e' -> e'
+          Nothing ->
+            errorWithoutStackTrace . unwords $
+              [ "checked-io invariant violation:"
+              , "IOE contained an unexpected synchronous exception:"
+              , "Expected `" ++ show (typeRep $ Proxy @e) ++ "`,"
+              , "got `" ++ show (typeOf e) ++ "`."
+              , show e
+              ]
+
+instance MonadCatchIO Void UIO where
+  catchAny = catchAny . runUIO @(IOE Void)
 
 -- | Convert @IOE e a@ to @UIO (Either e a)@
 try :: (MonadCatchIO e ioe, MonadRunUIO uio) => ioe a -> uio (Either e a)
