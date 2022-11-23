@@ -67,7 +67,7 @@ import Data.Bifunctor (first)
 import Data.Foldable (asum)
 import Data.Maybe (fromMaybe)
 import Data.Typeable (cast)
-import Data.Void (Void, absurd)
+import Data.Void (Void)
 import GHC.Stack (HasCallStack, withFrozenCallStack)
 import qualified System.IO as GHC
 
@@ -116,7 +116,10 @@ class MonadUIO m => MonadIOE e m | m -> e where
 instance MonadIOE e (IOE e) where
   liftIOE = id
 instance MonadIOE Void UIO where
-  liftIOE = fmap (either absurd id) . try
+  -- trust that IOE doesn't have a Void exception floating around.
+  -- should be equivalent to `fmap (either absurd id) . try`, but
+  -- be more performant
+  liftIOE = UnsafeUIO . unIOE
 
 -- | Provide a function for running an action in the given monad in 'UIO'.
 --
@@ -206,24 +209,25 @@ throwTo tid = liftUIO . UnsafeUIO . GHC.throwTo tid . SomeException AsyncExcepti
 throwImprecise :: Exception e => e -> a
 throwImprecise = GHC.throw . SomeException ImpreciseExceptionType
 
--- TODO: catchAny
+-- TODO: catchAny (-> IOE Void), define catch + catchE with catchAny
 class (MonadIOE e ioe, Exception e) => MonadCatchIO e ioe | ioe -> e where
-  {-# MINIMAL catch #-}
-
   catch :: MonadUnliftUIO uio => ioe a -> (e -> uio a) -> uio a
 
   -- | Same as 'catch', except allows throwing exceptions in the handler
-  catchE :: MonadCatchIO e' ioe' => ioe a -> (e -> ioe' a) -> ioe' a
-  catchE m f = fromUIO $ (Right <$> m) `catch` (try . f)
+  catchE :: MonadUnliftIOE e' ioe' => ioe a -> (e -> ioe' a) -> ioe' a
 
 instance Exception e => MonadCatchIO e (IOE e) where
-  catch (UnsafeIOE m) f =
+  catch m f =
     withRunInUIO $ \run ->
-      UnsafeUIO $
+      liftIOE $ m `catchE` (liftUIO @(IOE Void) . run . f)
+
+  catchE (UnsafeIOE m) f =
+    withRunInIOE $ \run ->
+      UnsafeIOE $
         m `GHC.catch` \case
           SomeException SyncExceptionType e ->
             case cast e of
-              Just e' -> unUIO (run $ f e')
+              Just e' -> unIOE (run $ f e')
               Nothing ->
                 error $
                   "checked-io invariant violation: IOE contained an unexpected synchronous exception: "
@@ -233,6 +237,10 @@ instance Exception e => MonadCatchIO e (IOE e) where
 -- | Convert @IOE e a@ to @UIO (Either e a)@
 try :: (MonadCatchIO e ioe, MonadUIO uio) => ioe a -> uio (Either e a)
 try m = liftUIO $ (Right <$> m) `catch` (pure . Left)
+
+-- TODO: withException
+-- TODO: bracket
+-- TODO: mask
 
 mapExceptionM ::
   forall e1 e2 m1 m2 a.

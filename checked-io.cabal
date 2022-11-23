@@ -26,6 +26,7 @@ library
   exposed-modules:
       CheckedIO
       CheckedIO.Core
+      CheckedIO.Environment
       CheckedIO.Exception
       CheckedIO.Prelude
       CheckedIO.Prelude.NoIO
@@ -39,7 +40,8 @@ library
       NoImplicitPrelude
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
-      base >=4.14 && <5
+      base >=4.15 && <5
+    , bytestring >=0.10 && <1
   default-language: Haskell2010
 
 test-suite checked-io-test
