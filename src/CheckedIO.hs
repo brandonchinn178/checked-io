@@ -27,6 +27,8 @@ module CheckedIO (
   module X,
 ) where
 
+import Data.Void as X (Void, absurd)
+
 import CheckedIO.Core
 import CheckedIO.Exception as X (
   Exception (..),

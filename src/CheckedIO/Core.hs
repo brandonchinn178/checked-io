@@ -15,11 +15,6 @@
 {-# LANGUAGE TypeApplications #-}
 
 module CheckedIO.Core (
-  -- * UIO: Checked IO without exceptions
-  UIO (UnsafeUIO),
-  MonadRunUIO (..),
-  MonadRunAsUIO (..),
-
   -- * IOE: Checked IO with exceptions
   IOE (UnsafeIOE),
   MonadRunIOE (..),
@@ -32,7 +27,12 @@ module CheckedIO.Core (
   runIO,
   withRunAsIO,
 
-  -- * Lifting UIO
+  -- * UIO convenience type
+  UIO,
+  MonadRunUIO,
+  MonadRunAsUIO,
+  runUIO,
+  withRunAsUIO,
   fromUIO,
   fromUIOWith,
   uioToIO,
@@ -47,25 +47,19 @@ module CheckedIO.Core (
   liftE,
   evaluate,
 
-  -- * Exception handling specialized to IOE + UIO
+  -- * Exception handling specialized to IOE
   throwIOE,
   throwToIOE,
   catchIOE,
   catchAnyIOE,
   tryIOE,
-  throwToUIO,
-  catchUIO,
-  catchAnyUIO,
-  tryUIO,
 
   -- * Interop with unchecked IO
   Main,
   UnsafeIO,
   checkIO,
   unsafeCheckIO,
-  unsafeCheckUIO,
   uncheckIOE,
-  uncheckUIO,
 
   -- * Exceptions in checked IO actions
   AnyException (..),
@@ -76,7 +70,6 @@ import Control.Concurrent (ThreadId)
 import Control.Exception (Exception (..), SomeException (..))
 import qualified Control.Exception as GHC
 import qualified Control.Exception.Base as GHC
-import Data.Bifunctor (first)
 import Data.Foldable (asum)
 import Data.Maybe (fromMaybe)
 import Data.Proxy (Proxy (..))
@@ -90,10 +83,6 @@ import CheckedIO.Prelude.NoIO
 -- | An alias for the normal unsafe 'GHC.IO' type.
 type UnsafeIO = GHC.IO
 
--- | A checked IO action that cannot throw /any/ (synchronous) exceptions.
-newtype UIO a = UnsafeUIO {unUIO :: UnsafeIO a}
-  deriving (Functor, Applicative, Monad)
-
 -- | A checked IO action that can only throw synchronous exceptions
 -- of the given type.
 --
@@ -101,17 +90,6 @@ newtype UIO a = UnsafeUIO {unUIO :: UnsafeIO a}
 -- the `Either` for performance.
 newtype IOE e a = UnsafeIOE {unIOE :: UnsafeIO a}
   deriving (Functor, Applicative, Monad)
-
-{----- Lifted typeclasses -----}
-
--- | Run a 'UIO' action in the given monad.
-class Monad m => MonadRunUIO m where
-  runUIO :: UIO a -> m a
-
-instance MonadRunUIO UIO where
-  runUIO = id
-instance MonadRunUIO (IOE e) where
-  runUIO = UnsafeIOE . unUIO
 
 -- | Run an 'IOE' action in the given monad.
 --
@@ -124,30 +102,11 @@ instance MonadRunUIO (IOE e) where
 -- instance MonadRunUIO m => MonadRunIOE e (ExceptT e m) where
 --   runIOE = ExceptT . try
 -- @
-class MonadRunUIO m => MonadRunIOE e m | m -> e where
+class Monad m => MonadRunIOE e m | m -> e where
   runIOE :: IOE e a -> m a
 
 instance MonadRunIOE e (IOE e) where
   runIOE = id
-instance MonadRunIOE Void UIO where
-  -- trust that IOE doesn't have a Void exception floating around.
-  -- should be equivalent to `fmap (either absurd id) . try`, but
-  -- be more performant
-  runIOE = UnsafeUIO . unIOE
-
--- | Provide a function for running an action in the given monad in 'UIO'.
---
--- Instances must satisfy the following laws:
---
--- [Identity] @withRunAsUIO (\\run -> run m) === m@
--- [Inverse]  @withRunAsUIO (\\_ -> m) === runUIO m@
-class MonadRunAsIOE Void m => MonadRunAsUIO m where
-  withRunAsUIO :: ((forall a. m a -> UIO a) -> UIO b) -> m b
-
-instance MonadRunAsUIO UIO where
-  withRunAsUIO f = f id
-instance MonadRunAsUIO (IOE Void) where
-  withRunAsUIO f = runUIO (f runIOE)
 
 -- | Provide a function for running an action in the given monad in 'IOE'.
 --
@@ -160,8 +119,6 @@ class MonadRunIOE e m => MonadRunAsIOE e m | m -> e where
 
 instance MonadRunAsIOE e (IOE e) where
   withRunAsIOE f = f id
-instance MonadRunAsIOE Void UIO where
-  withRunAsIOE f = runIOE (f runUIO)
 
 {----- IO convenience type -----}
 
@@ -182,13 +139,33 @@ runIO = runIOE
 withRunAsIO :: MonadRunAsIO m => ((forall a. m a -> IO a) -> IO b) -> m b
 withRunAsIO = withRunAsIOE
 
-{----- Lifting UIO -----}
+{----- UIO convenience type -----}
+
+-- | A checked IO action that cannot throw /any/ (synchronous) exceptions.
+type UIO = IOE Void
+
+type MonadRunUIO = MonadRunIOE Void
+
+type MonadRunAsUIO = MonadRunAsIOE Void
+
+runUIO :: MonadRunIOE e m => UIO a -> m a
+runUIO = runIOE . castIOE
+  where
+    -- assuming that IOE doesn't have a Void exception floating around, this
+    -- should be equivalent to `fmap (either absurd id) . try`, but this is
+    -- more performant, as it doesn't have to catch async or imprecise
+    -- exceptions
+    castIOE = UnsafeIOE . unIOE
+
+withRunAsUIO :: MonadRunAsUIO m => ((forall a. m a -> UIO a) -> UIO b) -> m b
+withRunAsUIO = withRunAsIOE
 
 -- | Convert @UIO (Either e a)@ to @IOE e a@ (or any other monad
 -- with a @MonadRunIOE@ instance).
 --
 -- > fromUIO m = runUIO m >>= either throw pure
 fromUIO ::
+  forall e m a.
   (Exception e, MonadRunIOE e m) =>
   UIO (Either e a)
   -> m a
@@ -200,6 +177,7 @@ fromUIO = fromUIOWith id
 --
 -- Same as @mapExceptionM f . fromUIO@, but more performant.
 fromUIOWith ::
+  forall e1 e2 m a.
   (Exception e2, MonadRunIOE e2 m) =>
   (e1 -> e2)
   -> UIO (Either e1 a)
@@ -219,49 +197,40 @@ uioToIO = fromUIOWith SomeSyncException
 throw :: (Exception e, MonadRunIOE e m) => e -> m a
 throw = runIOE . UnsafeIOE . GHC.throwIO . AnySyncException . SomeException
 
--- | 'throwToUIO' generalized to any 'MonadRunUIO'
-throwTo :: (Exception e, MonadRunUIO m) => ThreadId -> e -> m ()
-throwTo tid = runUIO . UnsafeUIO . GHC.throwTo tid . AnyAsyncException @SomeException . SomeException
+-- | 'throwToIOE' generalized to any 'MonadRunIOE'
+throwTo :: (Exception e, MonadRunIOE e' m) => ThreadId -> e -> m ()
+throwTo tid = runIOE . UnsafeIOE . GHC.throwTo tid . AnyAsyncException @SomeException . SomeException
 
 -- | Throw an imprecise exception in a pure context.
 --
 -- __Warning__: Because the exception isn't tracked at the type level, this
 -- should be reserved for unrecoverable errors that aren't expected to be
--- handled. Also, if this value is not evaluated before 'uncheckIOE' or
--- 'uncheckUIO' is called, it'll remain wrapped in 'AnyException'.
+-- handled. Also, if this value is not evaluated before 'uncheckIOE'  is
+-- called, it'll remain wrapped in 'AnyException'.
 throwImprecise :: Exception e => e -> a
 throwImprecise = GHC.throw . AnyImpreciseException @SomeException . SomeException
 
-class (MonadRunIOE e ioe, Exception e) => MonadCatchIO e ioe | ioe -> e where
+class (MonadRunIOE e m, Exception e) => MonadCatchIO e m | m -> e where
   {-# MINIMAL catchAny #-}
 
-  -- | 'catchUIO' generalized to any 'MonadCatchIO' + 'MonadRunAsUIO'
-  catch :: MonadRunAsUIO uio => ioe a -> (e -> uio a) -> uio a
-  catch m f =
-    withRunAsUIO $ \run ->
-      runIOE $ m `catchE` (runUIO @(IOE Void) . run . f)
-
   -- | 'catchIOE' generalized to any 'MonadCatchIO' + 'MonadRunAsIOE'
-  catchE :: MonadRunAsIOE e' ioe' => ioe a -> (e -> ioe' a) -> ioe' a
-  catchE m f =
+  catch :: MonadRunAsIOE e' m' => m a -> (e -> m' a) -> m' a
+  catch m f =
     m `catchAny` \case
       AnySyncException e -> f e
       e -> runIOE . UnsafeIOE . GHC.throwIO $ SomeException <$> e
 
   -- | 'catchAnyIOE' generalized to any 'MonadCatchIO' + 'MonadRunAsIOE'
-  catchAny :: MonadRunAsIOE e' ioe' => ioe a -> (AnyException e -> ioe' a) -> ioe' a
+  catchAny :: MonadRunAsIOE e' m' => m a -> (AnyException e -> m' a) -> m' a
 
 instance Exception e => MonadCatchIO e (IOE e) where
   catchAny (UnsafeIOE m) f =
     withRunAsIOE $ \run ->
       UnsafeIOE $ m `GHC.catch` (unIOE . run . f . castAnyException)
 
-instance MonadCatchIO Void UIO where
-  catchAny = catchAny . runUIO @(IOE Void)
-
--- | 'tryUIO' generalized to any 'MonadCatchIO' + 'MonadRunUIO'
-try :: (MonadCatchIO e ioe, MonadRunUIO uio) => ioe a -> uio (Either e a)
-try m = runUIO $ (Right <$> m) `catch` (pure . Left)
+-- | 'tryIOE' generalized to any 'MonadCatchIO' + 'MonadRunIOE'
+try :: (MonadCatchIO e m1, MonadRunIOE e' m2) => m1 a -> m2 (Either e a)
+try m = runIOE $ (Right <$> m) `catch` (pure . Left)
 
 -- TODO: withException
 -- TODO: bracket
@@ -269,11 +238,11 @@ try m = runUIO $ (Right <$> m) `catch` (pure . Left)
 
 mapExceptionM ::
   forall e1 e2 m1 m2 a.
-  (MonadCatchIO e1 m1, MonadCatchIO e2 m2) =>
+  (MonadCatchIO e1 m1, MonadRunAsIOE e2 m2, Exception e2) =>
   (e1 -> e2)
   -> m1 a
   -> m2 a
-mapExceptionM f = fromUIO . fmap (first f) . try
+mapExceptionM f m = m `catch` (throw . f)
 
 -- | Lift an exception to 'SomeSyncException', useful for converting to 'IO'.
 --
@@ -289,60 +258,44 @@ mapExceptionM f = fromUIO . fmap (first f) . try
 -- @
 liftE ::
   forall e m1 m2 a.
-  (MonadCatchIO e m1, MonadCatchIO SomeSyncException m2) =>
+  (MonadCatchIO e m1, MonadRunAsIO m2) =>
   m1 a
   -> m2 a
 liftE = mapExceptionM SomeSyncException
 
-evaluate :: MonadRunUIO m => a -> m a
-evaluate = runUIO . UnsafeUIO . GHC.evaluate
+evaluate :: MonadRunIOE e m => a -> m a
+evaluate = runIOE . UnsafeIOE . GHC.evaluate
 
-{----- Exception handling specialized to UIO + IOE -----}
+{----- Exception handling specialized to IOE -----}
 
 -- | Throw the given exception in 'IOE'.
 throwIOE :: forall e a. Exception e => e -> IOE e a
 throwIOE = throw
 
--- | Same as 'throwToUIO', except for 'IOE'.
+-- | Throw the given exception as an asynchronous exception to the given thread.
 throwToIOE :: forall e. Exception e => ThreadId -> e -> IOE e ()
 throwToIOE = throwTo
 
 -- | Handle the exception tracked in 'IOE' if one is thrown.
 catchIOE :: forall e1 e2 a. Exception e1 => IOE e1 a -> (e1 -> IOE e2 a) -> IOE e2 a
-catchIOE = catchE
-
--- | Same as 'catchAnyUIO', except for 'IOE'.
-catchAnyIOE :: forall e1 e2 a. Exception e1 => IOE e1 a -> (AnyException e1 -> IOE e2 a) -> IOE e2 a
-catchAnyIOE = catchAny
-
--- | Same as 'tryUIO', except for 'IOE'.
-tryIOE :: forall e1 e2 a. Exception e1 => IOE e1 a -> IOE e2 (Either e1 a)
-tryIOE = try
-
--- | Throw the given exception as an asynchronous exception to the given thread.
-throwToUIO :: forall e. Exception e => ThreadId -> e -> UIO ()
-throwToUIO = throwTo
-
--- | Handle the exception tracked in 'IOE' if one is thrown.
-catchUIO :: forall e a. Exception e => IOE e a -> (e -> UIO a) -> UIO a
-catchUIO = catch
+catchIOE = catch
 
 -- | Handle /all/ exceptions in the given 'IOE' action, including non-synchronous
 -- exceptions.
 --
--- __Warning__: You probably want 'catchUIO' or 'catchIOE' instead; if you catch an
+-- __Warning__: You probably want 'catchIOE' instead; if you catch an
 -- async exception, you /must/ be careful to rethrow it after.
 --
 -- More information:
 --
 --   * https://www.fpcomplete.com/blog/2018/04/async-exception-handling-haskell/
 --   * https://www.tweag.io/blog/2020-04-16-exceptions-in-haskell/
-catchAnyUIO :: forall e a. Exception e => IOE e a -> (AnyException e -> UIO a) -> UIO a
-catchAnyUIO m f = runIOE $ catchAny m (runUIO . f)
+catchAnyIOE :: forall e1 e2 a. Exception e1 => IOE e1 a -> (AnyException e1 -> IOE e2 a) -> IOE e2 a
+catchAnyIOE = catchAny
 
 -- | Get an @Either@ containing either the result or the exception thrown.
-tryUIO :: Exception e => IOE e a -> UIO (Either e a)
-tryUIO = try
+tryIOE :: forall e1 e2 a. Exception e1 => IOE e1 a -> IOE e2 (Either e1 a)
+tryIOE = try
 
 {----- Interop with unchecked IO -----}
 
@@ -374,25 +327,13 @@ unsafeCheckIO = mapExceptionM convert . checkIO
             "unsafeCheckIO was called on an action that threw an unexpected error: "
               ++ show e
 
--- | Convert an unchecked IO action into a checked UIO action.
---
--- __Warning__: If the IO action threw any synchronous exceptions, this function
--- will error.
-unsafeCheckUIO :: HasCallStack => UnsafeIO a -> UIO a
-unsafeCheckUIO = fmap (either foundError id) . try . checkIO
-  where
-    foundError (SomeSyncException e) =
-      withFrozenCallStack . error $
-        "unsafeCheckUIO was called on an action that unexpectedly threw an error: "
-          ++ show e
-
 -- | Unchecks an 'IOE' action back into the normal 'GHC.IO' monad.
 --
 -- __Warning__: Imprecise exceptions might be wrapped in 'AnyException'
 -- after converting to 'UnsafeIO'. See 'throwImprecise' for more details.
-uncheckIOE :: Exception e => IOE e a -> UnsafeIO a
+uncheckIOE :: forall e a. Exception e => IOE e a -> UnsafeIO a
 uncheckIOE m =
-  let UnsafeUIO m' = (Right <$> m >>= evaluate) `catchAny` (pure . Left)
+  let UnsafeIOE m' = (Right <$> m >>= evaluate) `catchAny` (pure . Left)
   in  m' >>= \case
         Right a -> pure a
         Left (AnySyncException e) ->
@@ -402,16 +343,9 @@ uncheckIOE m =
         Left (AnyAsyncException (SomeException e)) -> GHC.throwIO (GHC.SomeAsyncException e)
         Left (AnyImpreciseException e) -> GHC.throwIO e
 
--- | Unchecks an 'UIO' action back into the normal 'GHC.IO' monad.
---
--- __Warning__: Imprecise exceptions might be wrapped in 'AnyException'
--- after converting to 'UnsafeIO'. See 'throwImprecise' for more details.
-uncheckUIO :: UIO a -> UnsafeIO a
-uncheckUIO = uncheckIOE . runUIO @(IOE Void)
+{----- Exceptions in IOE -----}
 
-{----- Exceptions in IOE/UIO -----}
-
--- | All exceptions floating around 'UIO' or 'IOE' (synchronous
+-- | All exceptions floating around 'IOE' (synchronous
 -- or otherwise) will be an @AnyException SomeException@.
 data AnyException e
   = AnySyncException e
