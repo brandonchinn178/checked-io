@@ -32,7 +32,7 @@ import CheckedIO.Foreign (
 data GetEnvVarError
   = GetEnvVarMissing String
   | GetEnvVarEncodingError EncodingError
-  deriving (Show)
+  deriving (Show, Eq)
 
 instance Exception GetEnvVarError where
   displayException = \case

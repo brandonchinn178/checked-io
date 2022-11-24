@@ -41,9 +41,11 @@ tests:
           - hiding (Prelude)
       - name: checked-io
         mixin:
+          - hiding (CheckedIO)
           - (CheckedIO as Prelude)
       - tasty
       - tasty-autocollect
+      - tasty-hunit
       - tasty-quickcheck
     ghc-options: >
       -threaded

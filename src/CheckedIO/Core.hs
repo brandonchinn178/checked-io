@@ -63,6 +63,7 @@ module CheckedIO.Core (
   unsafeCheckIO,
   unsafeCheckUIO,
   uncheckIOE,
+  uncheckUIO,
 
   -- * Exceptions in checked IO actions
   AnyException (..),
@@ -361,6 +362,10 @@ uncheckIOE m =
             Nothing -> GHC.throwIO e
         Left (AnyAsyncException (SomeException e)) -> GHC.throwIO (GHC.SomeAsyncException e)
         Left (AnyImpreciseException e) -> GHC.throwIO e
+
+-- | 'uncheckIOE' specialized to UIO.
+uncheckUIO :: UIO a -> UnsafeIO a
+uncheckUIO = uncheckIOE
 
 {----- Exceptions in IOE -----}
 

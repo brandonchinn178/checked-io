@@ -49,6 +49,7 @@ test-suite checked-io-test
   main-is: Main.hs
   other-modules:
       CheckedIO.CoreTest
+      CheckedIO.EnvironmentTest
   hs-source-dirs:
       test
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N -F -pgmF=tasty-autocollect
@@ -60,8 +61,10 @@ test-suite checked-io-test
     , checked-io
     , tasty
     , tasty-autocollect
+    , tasty-hunit
     , tasty-quickcheck
   mixins:
       base hiding (Prelude)
+    , checked-io hiding (CheckedIO)
     , checked-io (CheckedIO as Prelude)
   default-language: Haskell2010

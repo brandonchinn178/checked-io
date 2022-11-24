@@ -46,6 +46,6 @@ fromCString = checkUIOWith checkE . GHC.peekCString . unCString
 {----- Encodings -----}
 
 data EncodingError = EncodingError String
-  deriving (Show)
+  deriving (Show, Eq)
 
 instance Exception EncodingError
