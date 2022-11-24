@@ -4,5 +4,9 @@ packages:
   - ./
   - example/
 
+extra-deps:
+  - github: brandonchinn178/tasty-autocollect
+    commit: 868cf34f071432e6a0a08956a5a34cc139558e0f
+
 ghc-options:
   '$locals': -Werror

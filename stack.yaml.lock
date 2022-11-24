@@ -3,7 +3,18 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/lock_files
 
-packages: []
+packages:
+- completed:
+    name: tasty-autocollect
+    pantry-tree:
+      sha256: 60d7f4a44068a2a49ff2a8f334034255911aeaea78225cd65a31823a85dfc0e7
+      size: 4741
+    sha256: e6b4b45b3dedc0bf9ff91b0fbb110c11e382933561434750f1b94dfb28a9bb4d
+    size: 33282
+    url: https://github.com/brandonchinn178/tasty-autocollect/archive/868cf34f071432e6a0a08956a5a34cc139558e0f.tar.gz
+    version: 0.3.2.0
+  original:
+    url: https://github.com/brandonchinn178/tasty-autocollect/archive/868cf34f071432e6a0a08956a5a34cc139558e0f.tar.gz
 snapshots:
 - completed:
     sha256: f19b7679d0a1094c09ac025c8cfbd4bcdfb0f1f991110094f78ce5a8e299cb39
