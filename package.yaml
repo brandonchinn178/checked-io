@@ -28,7 +28,6 @@ library:
   source-dirs: src
   dependencies:
     - base >= 4.15 && < 5
-    - bytestring >= 0.10 && < 1
   default-extensions:
     - NoImplicitPrelude
 

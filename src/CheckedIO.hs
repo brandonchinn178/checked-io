@@ -32,6 +32,7 @@ import Data.Void as X (Void, absurd)
 import CheckedIO.Core
 import CheckedIO.Exception as X (
   Exception (..),
+  SomeException,
   convertE,
  )
 import CheckedIO.Prelude
