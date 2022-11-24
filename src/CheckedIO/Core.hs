@@ -58,7 +58,10 @@ module CheckedIO.Core (
   Main,
   UnsafeIO,
   checkIO,
+  checkIOWith,
+  checkUIOWith,
   unsafeCheckIO,
+  unsafeCheckUIO,
   uncheckIOE,
 
   -- * Exceptions in checked IO actions
@@ -303,21 +306,33 @@ tryIOE = try
 type Main = UnsafeIO ()
 
 -- | Convert an unchecked IO action into a checked IO action.
-checkIO :: UnsafeIO a -> IO a
-checkIO = UnsafeIOE . GHC.handle (GHC.throwIO . convert)
-  where
-    convert = \case
-      AnySyncException (SomeException e) ->
-        AnySyncException (SomeException $ SomeSyncException e)
-      e -> e
+checkIO :: MonadRunIO m => UnsafeIO a -> m a
+checkIO = checkIOWith (\(SomeException e) -> SomeSyncException e)
+
+-- | Same as 'checkIO' except converting a synchronous exception with the given function.
+--
+-- Equivalent to @mapExceptionM f . checkIO@, except more performant.
+checkIOWith :: (Exception e, MonadRunIOE e m) => (SomeException -> e) -> UnsafeIO a -> m a
+checkIOWith f m = checkUIOWith f m >>= either throw pure
+
+-- | Same as 'checkIOWith' except returning the exception as an @Either@ instead of
+-- throwing it.
+checkUIOWith :: MonadRunIOE e' m => (SomeException -> e) -> UnsafeIO a -> m (Either e a)
+checkUIOWith f m =
+  runIOE . UnsafeIOE $
+    GHC.try m >>= \case
+      Right x -> pure $ Right x
+      Left (AnySyncException e) -> pure $ Left (f e)
+      Left e -> GHC.throwIO e
 
 -- | Convert an unchecked IO action into a checked IO action that can throw
 -- the given exception type.
 --
 -- __Warning__: If the IO action threw a different synchronous exception,
--- this function will error.
-unsafeCheckIO :: (HasCallStack, Exception e) => UnsafeIO a -> IOE e a
-unsafeCheckIO = mapExceptionM convert . checkIO
+-- this function will error. Prefer using 'checkIOWith' and calling 'error'
+-- yourself with a better error message.
+unsafeCheckIO :: (HasCallStack, Exception e, MonadRunIOE e m) => UnsafeIO a -> m a
+unsafeCheckIO = runIOE . mapExceptionM convert . checkIO @IO
   where
     convert (SomeSyncException e) =
       case cast e of
@@ -326,6 +341,10 @@ unsafeCheckIO = mapExceptionM convert . checkIO
           withFrozenCallStack . error $
             "unsafeCheckIO was called on an action that threw an unexpected error: "
               ++ show e
+
+-- | Same as 'unsafeCheckIO', except expects /no/ exceptions to be thrown.
+unsafeCheckUIO :: (HasCallStack, MonadRunIOE e m) => UnsafeIO a -> m a
+unsafeCheckUIO = withFrozenCallStack . runUIO . unsafeCheckIO
 
 -- | Unchecks an 'IOE' action back into the normal 'GHC.IO' monad.
 --
