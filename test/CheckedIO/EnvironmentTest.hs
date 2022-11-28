@@ -30,5 +30,5 @@ test =
 
 test =
   testCase "getEnv throws for non-existing env var" $ do
-    res <- uncheckUIO (tryIOE $ getEnv "does-not-exist")
+    res <- uncheckUIO (try $ getEnv "does-not-exist")
     res @?= Left (GetEnvVarMissing "does-not-exist")

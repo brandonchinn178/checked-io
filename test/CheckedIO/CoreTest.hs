@@ -41,5 +41,5 @@ test =
   testProperty "try . throw === pure . Left" $
     \(AnException e) -> ioProperty . uncheckUIO $ do
       expected <- (pure . Left @_ @()) e
-      actual <- (try . throwIOE) e
+      actual <- (try . throw) e
       pure (actual === expected)
