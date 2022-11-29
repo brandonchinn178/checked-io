@@ -29,6 +29,7 @@ library
       CheckedIO.Environment
       CheckedIO.Exception
       CheckedIO.Foreign
+      CheckedIO.IORef
       CheckedIO.Prelude
       CheckedIO.Prelude.NoIO
   other-modules:
