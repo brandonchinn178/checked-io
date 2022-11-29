@@ -1,7 +1,7 @@
 resolver: nightly-2022-11-23
 
 packages:
-  - ./
+  - packages/checked-io/
   - example/
 
 extra-deps:
