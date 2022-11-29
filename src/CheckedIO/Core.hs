@@ -48,9 +48,35 @@ module CheckedIO.Core (
   liftE,
   evaluate,
 
+  -- * Cleanup (no recovery)
+  bracket,
+  bracket_,
+  bracketOnError,
+  bracketOnError_,
+  finally,
+  onException,
+  withException,
+
+  -- * Masking
+  mask,
+  uninterruptibleMask,
+  mask_,
+  uninterruptibleMask_,
+
   -- * Lifted exception handling
   MonadCatchIO (..),
   tryM,
+  bracketM,
+  bracketM_,
+  bracketOnErrorM,
+  bracketOnErrorM_,
+  finallyM,
+  onExceptionM,
+  withExceptionM,
+  maskM,
+  uninterruptibleMaskM,
+  maskM_,
+  uninterruptibleMaskM_,
 
   -- * Interop with unchecked IO
   Main,
@@ -150,6 +176,9 @@ type MonadRunUIO = MonadRunIOE Void
 
 type MonadRunAsUIO = MonadRunAsIOE Void
 
+unUIO :: UIO a -> UnsafeIO a
+unUIO = unIOE
+
 runUIO :: MonadRunIOE e m => UIO a -> m a
 runUIO = runIOE . castIOE
   where
@@ -233,10 +262,6 @@ catchAny = catchAnyM
 try :: forall e1 e2 a. (Exception e1, Exception e2) => IOE e1 a -> IOE e2 (Either e1 a)
 try = tryM
 
--- TODO: withException
--- TODO: bracket
--- TODO: mask
-
 mapExceptionM ::
   forall e1 e2 m1 m2 a.
   (MonadCatchIO e1 m1, MonadRunAsIOE e2 m2) =>
@@ -267,9 +292,89 @@ liftE = mapExceptionM SomeSyncException
 evaluate :: MonadRunIOE e m => a -> m a
 evaluate = runIOE . UnsafeIOE . GHC.evaluate
 
+{----- Cleanup (no recovery) -----}
+
+-- | Allocate and clean up a resource safely.
+--
+-- Runs the clean up in an uninterruptible mask. For more information:
+--
+--   * https://hackage.haskell.org/package/unliftio-0.2.23.0/docs/UnliftIO-Exception.html#v:bracket
+--   * https://hackage.haskell.org/package/base-4.17.0.0/docs/Control-Exception-Base.html#v:bracket
+bracket :: Exception e => IOE e a -> (a -> IOE e b) -> (a -> IOE e c) -> IOE e c
+bracket = bracketM
+
+-- | Same as 'bracket', except without passing the result of the acquire action to the
+-- release or run actions.
+bracket_ :: Exception e => IOE e a -> IOE e b -> IOE e c -> IOE e c
+bracket_ = bracketM_
+
+-- | Same as 'bracket', but only perform the cleanup if an exception is thrown.
+bracketOnError ::
+  (Exception e, Exception e') =>
+  IOE e a
+  -> (a -> IOE e' b)
+  -> (a -> IOE e c)
+  -> IOE e c
+bracketOnError = bracketOnErrorM
+
+-- | Same as 'bracket_', but only perform the cleanup if an exception is thrown.
+bracketOnError_ ::
+  (Exception e, Exception e') =>
+  IOE e a
+  -> IOE e' b
+  -> IOE e c
+  -> IOE e c
+bracketOnError_ = bracketOnErrorM_
+
+-- | A specialized variant of 'bracket' that just runs a computation afterward.
+finally :: Exception e => IOE e a -> IOE e b -> IOE e a
+finally = finallyM
+
+-- | Like 'finally', except only runs the cleanup if an exception occurs.
+onException :: (Exception e, Exception e') => IOE e a -> IOE e' b -> IOE e a
+onException = onExceptionM
+
+-- | Like 'onException', except passing the exception to the cleanup function.
+--
+-- Unlike 'catchAny', you /don't/ need to worry about rethrowing async exceptions
+-- because 'withException' always rethrows the exception after running the cleanup.
+withException :: (Exception e, Exception e') => IOE e a -> (AnyException e -> IOE e' b) -> IOE e a
+withException = withExceptionM
+
+{----- Masking -----}
+
+-- | Execute an IO action with asynchronous exceptions masked.
+--
+-- https://hackage.haskell.org/package/base-4.17.0.0/docs/GHC-IO.html#v:mask
+mask ::
+  Exception e =>
+  ((forall e' a. Exception e' => IOE e' a -> IOE e' a) -> IOE e b)
+  -> IOE e b
+mask = maskM
+
+-- | Like 'mask', but the masked computation is not interruptible.
+--
+-- __Warning__: Use with great care, as a thread running with 'uninterruptibleMask' will
+-- be unresponsive and unkillable if it blocks at all.
+--
+-- https://hackage.haskell.org/package/base-4.17.0.0/docs/GHC-IO.html#v:uninterruptibleMask
+uninterruptibleMask ::
+  Exception e =>
+  ((forall e' a. Exception e' => IOE e' a -> IOE e' a) -> IOE e b)
+  -> IOE e b
+uninterruptibleMask = uninterruptibleMaskM
+
+-- | Like 'mask', but does not pass a @restore@ action to the argument.
+mask_ :: Exception e => IOE e a -> IOE e a
+mask_ = maskM_
+
+-- | Like 'uninterruptibleMask', but does not pass a @restore@ action to the argument.
+uninterruptibleMask_ :: Exception e => IOE e a -> IOE e a
+uninterruptibleMask_ = uninterruptibleMaskM_
+
 {----- Lifted exception handling -----}
 
-class (MonadRunIOE e m, Exception e) => MonadCatchIO e m | m -> e where
+class (MonadRunAsIOE e m, Exception e) => MonadCatchIO e m | m -> e where
   {-# MINIMAL catchAnyM #-}
 
   -- | 'catch' generalized to any 'MonadCatchIO' + 'MonadRunAsIOE'
@@ -277,7 +382,8 @@ class (MonadRunIOE e m, Exception e) => MonadCatchIO e m | m -> e where
   catchM m f =
     m `catchAnyM` \case
       AnySyncException e -> f e
-      e -> runIOE . UnsafeIOE . GHC.throwIO $ SomeException <$> e
+      AnyAsyncException e -> rethrow (AnyAsyncException e)
+      AnyImpreciseException e -> rethrow (AnyImpreciseException e)
 
   -- | 'catchAny' generalized to any 'MonadCatchIO' + 'MonadRunAsIOE'
   catchAnyM :: MonadRunAsIOE e' m' => m a -> (AnyException e -> m' a) -> m' a
@@ -290,6 +396,115 @@ instance Exception e => MonadCatchIO e (IOE e) where
 -- | 'try' generalized to any 'MonadCatchIO' + 'MonadRunIOE'
 tryM :: (MonadCatchIO e m1, MonadRunIOE e' m2) => m1 a -> m2 (Either e a)
 tryM m = runIOE $ (Right <$> m) `catchM` (pure . Left)
+
+bracketM' ::
+  (MonadCatchIO e m, MonadCatchIO e' m') =>
+  m a -- ^ acquire
+  -> (a -> m b1) -- ^ release on success
+  -> (AnyException e -> a -> m' b2) -- ^ release on error
+  -> (a -> m c) -- ^ action
+  -> m c
+bracketM' acquire releaseOnSuccess releaseOnError action =
+  maskM $ \restore -> do
+    x <- acquire
+    tryAny (restore $ action x) >>= \case
+      Right y -> do
+        _ <- uninterruptibleMaskM_ (releaseOnSuccess x)
+        pure y
+      Left e -> do
+        -- explicitly ignore synchronous exceptions
+        _ <- tryM $ uninterruptibleMaskM_ (releaseOnError e x)
+        rethrow e
+  where
+    tryAny m = (Right <$> m) `catchAnyM` (pure . Left)
+
+-- | 'bracket' generalized to any 'MonadCatchIO'
+bracketM ::
+  MonadCatchIO e m =>
+  m a
+  -> (a -> m b)
+  -> (a -> m c)
+  -> m c
+bracketM acquire release action = bracketM' acquire release (\_ -> release) action
+
+-- | 'bracket_' generalized to any 'MonadCatchIO'
+bracketM_ :: MonadCatchIO e m => m a -> m b -> m c -> m c
+bracketM_ acquire release action = bracketM acquire (const release) (const action)
+
+-- | 'bracketOnError' generalized to any 'MonadCatchIO'
+bracketOnErrorM ::
+  (MonadCatchIO e m, MonadCatchIO e' m') =>
+  m a
+  -> (a -> m' b)
+  -> (a -> m c)
+  -> m c
+bracketOnErrorM acquire release action = bracketM' acquire (\_ -> pure ()) (\_ -> release) action
+
+-- | 'bracketOnError_' generalized to any 'MonadCatchIO'
+bracketOnErrorM_ ::
+  (MonadCatchIO e m, MonadCatchIO e' m') =>
+  m a
+  -> m' b
+  -> m c
+  -> m c
+bracketOnErrorM_ acquire releaseOnError action = bracketOnErrorM acquire (const releaseOnError) (const action)
+
+-- | 'finally' generalized to any 'MonadCatchIO'
+finallyM :: MonadCatchIO e m => m a -> m b -> m a
+finallyM action cleanup = bracketM_ (pure ()) cleanup action
+
+-- | 'onException' generalized to any 'MonadCatchIO'
+onExceptionM :: (MonadCatchIO e m, MonadCatchIO e' m') => m a -> m' b -> m a
+onExceptionM action after = withExceptionM action (\_ -> after)
+
+-- | 'withException' generalized to any 'MonadCatchIO'
+withExceptionM :: (MonadCatchIO e m, MonadCatchIO e' m') => m a -> (AnyException e -> m' b) -> m a
+withExceptionM action after =
+  bracketM'
+    (pure ())
+    (\_ -> pure ())
+    (\e _ -> after e)
+    (\_ -> action)
+
+maskM' ::
+  MonadCatchIO e m =>
+  (forall b'. ((forall a'. UnsafeIO a' -> UnsafeIO a') -> UnsafeIO b') -> UnsafeIO b')
+  -> ((forall m' e' a. MonadCatchIO e' m' => m' a -> m' a) -> m b)
+  -> m b
+maskM' unsafeMask f =
+  withRunAsIOE $ \run ->
+    fromUIO $ maskIOE $ \restore -> do
+      let restoreIOE m =
+            fromUIO $
+              checkIOWith
+                (\e -> error $ "restore unexpectedly threw an error: " ++ show e)
+                (restore $ unUIO (tryM m))
+      unUIO $ try $ run $ f restoreIOE
+  where
+    maskIOE :: MonadRunIOE e m => ((forall a. UnsafeIO a -> UnsafeIO a) -> UnsafeIO b) -> m b
+    maskIOE f' = checkIOWith (\e -> error $ "mask unexpectedly threw an error: " ++ show e) (unsafeMask f')
+
+-- | 'mask' generalized to any 'MonadCatchIO'
+maskM ::
+  MonadCatchIO e m =>
+  ((forall m' e' a. MonadCatchIO e' m' => m' a -> m' a) -> m b)
+  -> m b
+maskM = maskM' GHC.mask
+
+-- | 'uninterruptibleMask' generalized to any 'MonadCatchIO'
+uninterruptibleMaskM ::
+  MonadCatchIO e m =>
+  ((forall m' e' a. MonadCatchIO e' m' => m' a -> m' a) -> m b)
+  -> m b
+uninterruptibleMaskM = maskM' GHC.uninterruptibleMask
+
+-- | 'mask_' generalized to any 'MonadCatchIO'
+maskM_ :: MonadCatchIO e m => m a -> m a
+maskM_ action = maskM (\_ -> action)
+
+-- | 'uninterruptibleMask_' generalized to any 'MonadCatchIO'
+uninterruptibleMaskM_ :: MonadCatchIO e m => m a -> m a
+uninterruptibleMaskM_ action = uninterruptibleMaskM (\_ -> action)
 
 {----- Interop with unchecked IO -----}
 
@@ -356,6 +571,10 @@ uncheckIOE m =
 -- | 'uncheckIOE' specialized to UIO.
 uncheckUIO :: UIO a -> UnsafeIO a
 uncheckUIO = uncheckIOE
+
+-- | Internal-only function to rethrow an 'AnyException' caught by 'catchAnyM'.
+rethrow :: MonadRunIOE e m => AnyException e -> m a
+rethrow = runIOE . UnsafeIOE . GHC.throwIO . fmap SomeException
 
 {----- Exceptions in IOE -----}
 
