@@ -1,0 +1,313 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE FlexibleContexts #-}</span><span>
+</span><span id="line-2"></span><span class="hs-pragma">{-# LANGUAGE LambdaCase #-}</span><span>
+</span><span id="line-3"></span><span>
+</span><span id="line-4"></span><span class="annot"><span class="hs-comment">-- | A checked version of @System.Environment@</span></span><span>
+</span><span id="line-5"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">CheckedIO.Environment</span><span> </span><span class="hs-special">(</span><span>
+</span><span id="line-6"></span><span>  </span><span class="annot"><span class="hs-comment">-- * getEnv</span></span><span>
+</span><span id="line-7"></span><span>  </span><span class="annot"><a href="CheckedIO.Environment.html#GetEnvVarError"><span class="hs-identifier">GetEnvVarError</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">,</span><span>
+</span><span id="line-8"></span><span>  </span><span class="annot"><a href="CheckedIO.Environment.html#getEnvIO"><span class="hs-identifier">getEnvIO</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-9"></span><span>  </span><span class="annot"><a href="CheckedIO.Environment.html#getEnv"><span class="hs-identifier">getEnv</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-10"></span><span>  </span><span class="annot"><a href="CheckedIO.Environment.html#getEnvUIO"><span class="hs-identifier">getEnvUIO</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-11"></span><span>
+</span><span id="line-12"></span><span>  </span><span class="annot"><span class="hs-comment">-- * lookupEnv</span></span><span>
+</span><span id="line-13"></span><span>  </span><span class="annot"><a href="CheckedIO.Environment.html#lookupEnvIO"><span class="hs-identifier">lookupEnvIO</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-14"></span><span>  </span><span class="annot"><a href="CheckedIO.Environment.html#lookupEnv"><span class="hs-identifier">lookupEnv</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-15"></span><span>  </span><span class="annot"><a href="CheckedIO.Environment.html#lookupEnvUIO"><span class="hs-identifier">lookupEnvUIO</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-16"></span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-17"></span><span>
+</span><span id="line-18"></span><span class="hs-comment">-- import Data.ByteString (ByteString)</span><span>
+</span><span id="line-19"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Foreign.C.Types</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">CChar</span></span><span class="hs-special">)</span><span>
+</span><span id="line-20"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Foreign.Ptr</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">Ptr</span></span><span class="hs-special">,</span><span> </span><span class="annot"><span class="hs-identifier">nullPtr</span></span><span class="hs-special">)</span><span>
+</span><span id="line-21"></span><span>
+</span><span id="line-22"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="CheckedIO.html"><span class="hs-identifier">CheckedIO</span></a></span><span>
+</span><span id="line-23"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="CheckedIO.Foreign.html"><span class="hs-identifier">CheckedIO.Foreign</span></a></span><span> </span><span class="hs-special">(</span><span>
+</span><span id="line-24"></span><span>  </span><span class="annot"><a href="CheckedIO.Foreign.html#CString"><span class="hs-identifier">CString</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">,</span><span>
+</span><span id="line-25"></span><span>  </span><span class="annot"><a href="CheckedIO.Foreign.html#EncodingError"><span class="hs-identifier">EncodingError</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-26"></span><span>  </span><span class="annot"><a href="CheckedIO.Foreign.html#fromCString"><span class="hs-identifier">fromCString</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-27"></span><span>  </span><span class="annot"><a href="CheckedIO.Foreign.html#withCString"><span class="hs-identifier">withCString</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-28"></span><span> </span><span class="hs-special">)</span><span>
+</span><span id="line-29"></span><span>
+</span><span id="line-30"></span><span class="hs-comment">{----- getEnv -----}</span><span>
+</span><span id="line-31"></span><span>
+</span><span id="line-32"></span><span class="hs-keyword">data</span><span> </span><span id="GetEnvVarError"><span class="annot"><a href="CheckedIO.Environment.html#GetEnvVarError"><span class="hs-identifier hs-var">GetEnvVarError</span></a></span></span><span>
+</span><span id="line-33"></span><span>  </span><span class="hs-glyph">=</span><span> </span><span id="GetEnvVarMissing"><span class="annot"><a href="CheckedIO.Environment.html#GetEnvVarMissing"><span class="hs-identifier hs-var">GetEnvVarMissing</span></a></span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span>
+</span><span id="line-34"></span><span>  </span><span class="hs-glyph">|</span><span> </span><span id="GetEnvVarEncodingError"><span class="annot"><a href="CheckedIO.Environment.html#GetEnvVarEncodingError"><span class="hs-identifier hs-var">GetEnvVarEncodingError</span></a></span></span><span> </span><span class="annot"><a href="CheckedIO.Foreign.html#EncodingError"><span class="hs-identifier hs-type">EncodingError</span></a></span><span>
+</span><span id="line-35"></span><span>  </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679042570"><span id="local-6989586621679042580"><span id="local-6989586621679042584"><span class="annot"><span class="annottext">Int -&gt; GetEnvVarError -&gt; ShowS
+[GetEnvVarError] -&gt; ShowS
+GetEnvVarError -&gt; String
+(Int -&gt; GetEnvVarError -&gt; ShowS)
+-&gt; (GetEnvVarError -&gt; String)
+-&gt; ([GetEnvVarError] -&gt; ShowS)
+-&gt; Show GetEnvVarError
+forall a.
+(Int -&gt; a -&gt; ShowS) -&gt; (a -&gt; String) -&gt; ([a] -&gt; ShowS) -&gt; Show a
+$cshowsPrec :: Int -&gt; GetEnvVarError -&gt; ShowS
+showsPrec :: Int -&gt; GetEnvVarError -&gt; ShowS
+$cshow :: GetEnvVarError -&gt; String
+show :: GetEnvVarError -&gt; String
+$cshowList :: [GetEnvVarError] -&gt; ShowS
+showList :: [GetEnvVarError] -&gt; ShowS
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></span></span></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679042589"><span id="local-6989586621679042596"><span class="annot"><span class="annottext">GetEnvVarError -&gt; GetEnvVarError -&gt; Bool
+(GetEnvVarError -&gt; GetEnvVarError -&gt; Bool)
+-&gt; (GetEnvVarError -&gt; GetEnvVarError -&gt; Bool) -&gt; Eq GetEnvVarError
+forall a. (a -&gt; a -&gt; Bool) -&gt; (a -&gt; a -&gt; Bool) -&gt; Eq a
+$c== :: GetEnvVarError -&gt; GetEnvVarError -&gt; Bool
+== :: GetEnvVarError -&gt; GetEnvVarError -&gt; Bool
+$c/= :: GetEnvVarError -&gt; GetEnvVarError -&gt; Bool
+/= :: GetEnvVarError -&gt; GetEnvVarError -&gt; Bool
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var">Eq</span></span></span></span><span class="hs-special">)</span><span>
+</span><span id="line-36"></span><span>
+</span><span id="line-37"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679042606"><span id="local-6989586621679042610"><span class="annot"><span class="hs-identifier hs-type">Exception</span></span><span> </span><span class="annot"><a href="CheckedIO.Environment.html#GetEnvVarError"><span class="hs-identifier hs-type">GetEnvVarError</span></a></span></span></span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-38"></span><span>  </span><span id="local-6989586621679042616"><span class="annot"><span class="annottext">displayException :: GetEnvVarError -&gt; String
+</span><a href="#local-6989586621679042616"><span class="hs-identifier hs-var hs-var hs-var hs-var">displayException</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-glyph">\</span><span class="hs-glyph">case</span><span>
+</span><span id="line-39"></span><span>    </span><span class="annot"><a href="CheckedIO.Environment.html#GetEnvVarMissing"><span class="hs-identifier hs-type">GetEnvVarMissing</span></a></span><span> </span><span id="local-6989586621679042618"><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679042618"><span class="hs-identifier hs-var">name</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;getEnv: environment variable does not exist: &quot;</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; ShowS
+forall a. [a] -&gt; [a] -&gt; [a]
+</span><span class="hs-operator hs-var">++</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679042618"><span class="hs-identifier hs-var">name</span></a></span><span>
+</span><span id="line-40"></span><span>    </span><span class="annot"><a href="CheckedIO.Environment.html#GetEnvVarEncodingError"><span class="hs-identifier hs-type">GetEnvVarEncodingError</span></a></span><span> </span><span id="local-6989586621679042619"><span class="annot"><span class="annottext">EncodingError
+</span><a href="#local-6989586621679042619"><span class="hs-identifier hs-var">e</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;getEnv: &quot;</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; ShowS
+forall a. [a] -&gt; [a] -&gt; [a]
+</span><span class="hs-operator hs-var">++</span></span><span> </span><span class="annot"><span class="annottext">EncodingError -&gt; String
+forall e. Exception e =&gt; e -&gt; String
+</span><span class="hs-identifier hs-var">displayException</span></span><span> </span><span class="annot"><span class="annottext">EncodingError
+</span><a href="#local-6989586621679042619"><span class="hs-identifier hs-var">e</span></a></span><span>
+</span><span id="line-41"></span><span>
+</span><span id="line-42"></span><span id="local-6989586621679042482"><span class="annot"><a href="CheckedIO.Environment.html#getEnvIO"><span class="hs-identifier hs-type">getEnvIO</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="CheckedIO.Core.html#MonadRunIO"><span class="hs-identifier hs-type">MonadRunIO</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679042482"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679042482"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span></span><span>
+</span><span id="line-43"></span><span id="getEnvIO"><span class="annot"><span class="annottext">getEnvIO :: forall (m :: * -&gt; *). MonadRunIO m =&gt; String -&gt; m String
+</span><a href="CheckedIO.Environment.html#getEnvIO"><span class="hs-identifier hs-var hs-var">getEnvIO</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">UIO (Either GetEnvVarError String) -&gt; m String
+forall e (m :: * -&gt; *) a.
+(Exception e, MonadRunIO m) =&gt;
+UIO (Either e a) -&gt; m a
+</span><a href="CheckedIO.Core.html#uioToIO"><span class="hs-identifier hs-var">uioToIO</span></a></span><span> </span><span class="annot"><span class="annottext">(UIO (Either GetEnvVarError String) -&gt; m String)
+-&gt; (String -&gt; UIO (Either GetEnvVarError String))
+-&gt; String
+-&gt; m String
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; UIO (Either GetEnvVarError String)
+forall e (m :: * -&gt; *).
+MonadRunIOE e m =&gt;
+String -&gt; m (Either GetEnvVarError String)
+</span><a href="CheckedIO.Environment.html#getEnvUIO"><span class="hs-identifier hs-var">getEnvUIO</span></a></span><span>
+</span><span id="line-44"></span><span>
+</span><span id="line-45"></span><span id="local-6989586621679042497"><span class="annot"><a href="CheckedIO.Environment.html#getEnv"><span class="hs-identifier hs-type">getEnv</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="CheckedIO.Core.html#MonadRunIOE"><span class="hs-identifier hs-type">MonadRunIOE</span></a></span><span> </span><span class="annot"><a href="CheckedIO.Environment.html#GetEnvVarError"><span class="hs-identifier hs-type">GetEnvVarError</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679042497"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679042497"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span></span><span>
+</span><span id="line-46"></span><span id="getEnv"><span class="annot"><span class="annottext">getEnv :: forall (m :: * -&gt; *).
+MonadRunIOE GetEnvVarError m =&gt;
+String -&gt; m String
+</span><a href="CheckedIO.Environment.html#getEnv"><span class="hs-identifier hs-var hs-var">getEnv</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">UIO (Either GetEnvVarError String) -&gt; m String
+forall e (m :: * -&gt; *) a.
+MonadRunIOE e m =&gt;
+UIO (Either e a) -&gt; m a
+</span><a href="CheckedIO.Core.html#fromUIO"><span class="hs-identifier hs-var">fromUIO</span></a></span><span> </span><span class="annot"><span class="annottext">(UIO (Either GetEnvVarError String) -&gt; m String)
+-&gt; (String -&gt; UIO (Either GetEnvVarError String))
+-&gt; String
+-&gt; m String
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; UIO (Either GetEnvVarError String)
+forall e (m :: * -&gt; *).
+MonadRunIOE e m =&gt;
+String -&gt; m (Either GetEnvVarError String)
+</span><a href="CheckedIO.Environment.html#getEnvUIO"><span class="hs-identifier hs-var">getEnvUIO</span></a></span><span>
+</span><span id="line-47"></span><span>
+</span><span id="line-48"></span><span id="local-6989586621679042495"><span id="local-6989586621679042496"><span class="annot"><a href="CheckedIO.Environment.html#getEnvUIO"><span class="hs-identifier hs-type">getEnvUIO</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="CheckedIO.Core.html#MonadRunIOE"><span class="hs-identifier hs-type">MonadRunIOE</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679042495"><span class="hs-identifier hs-type">e</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679042496"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679042496"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">Either</span></span><span> </span><span class="annot"><a href="CheckedIO.Environment.html#GetEnvVarError"><span class="hs-identifier hs-type">GetEnvVarError</span></a></span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span class="hs-special">)</span></span></span><span>
+</span><span id="line-49"></span><span id="getEnvUIO"><span class="annot"><span class="annottext">getEnvUIO :: forall e (m :: * -&gt; *).
+MonadRunIOE e m =&gt;
+String -&gt; m (Either GetEnvVarError String)
+</span><a href="CheckedIO.Environment.html#getEnvUIO"><span class="hs-identifier hs-var hs-var">getEnvUIO</span></a></span></span><span> </span><span id="local-6989586621679042643"><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679042643"><span class="hs-identifier hs-var">name</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">Either EncodingError (Maybe String) -&gt; Either GetEnvVarError String
+forall {b}.
+Either EncodingError (Maybe b) -&gt; Either GetEnvVarError b
+</span><a href="#local-6989586621679042644"><span class="hs-identifier hs-var">go</span></a></span><span> </span><span class="annot"><span class="annottext">(Either EncodingError (Maybe String)
+ -&gt; Either GetEnvVarError String)
+-&gt; m (Either EncodingError (Maybe String))
+-&gt; m (Either GetEnvVarError String)
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; m (Either EncodingError (Maybe String))
+forall e (m :: * -&gt; *).
+MonadRunIOE e m =&gt;
+String -&gt; m (Either EncodingError (Maybe String))
+</span><a href="CheckedIO.Environment.html#lookupEnvUIO"><span class="hs-identifier hs-var">lookupEnvUIO</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679042643"><span class="hs-identifier hs-var">name</span></a></span><span>
+</span><span id="line-50"></span><span>  </span><span class="hs-keyword">where</span><span>
+</span><span id="line-51"></span><span>    </span><span id="local-6989586621679042644"><span class="annot"><span class="annottext">go :: Either EncodingError (Maybe b) -&gt; Either GetEnvVarError b
+</span><a href="#local-6989586621679042644"><span class="hs-identifier hs-var hs-var">go</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-glyph">\</span><span class="hs-glyph">case</span><span>
+</span><span id="line-52"></span><span>      </span><span class="annot"><span class="hs-identifier hs-type">Right</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">Just</span></span><span> </span><span id="local-6989586621679042646"><span class="annot"><span class="annottext">b
+</span><a href="#local-6989586621679042646"><span class="hs-identifier hs-var">res</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">b -&gt; Either GetEnvVarError b
+forall a b. b -&gt; Either a b
+</span><span class="hs-identifier hs-var">Right</span></span><span> </span><span class="annot"><span class="annottext">b
+</span><a href="#local-6989586621679042646"><span class="hs-identifier hs-var">res</span></a></span><span>
+</span><span id="line-53"></span><span>      </span><span class="annot"><span class="hs-identifier hs-type">Right</span></span><span> </span><span class="annot"><span class="annottext">Maybe b
+</span><span class="hs-identifier hs-var">Nothing</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">GetEnvVarError -&gt; Either GetEnvVarError b
+forall a b. a -&gt; Either a b
+</span><span class="hs-identifier hs-var">Left</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">String -&gt; GetEnvVarError
+</span><a href="CheckedIO.Environment.html#GetEnvVarMissing"><span class="hs-identifier hs-var">GetEnvVarMissing</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679042643"><span class="hs-identifier hs-var">name</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-54"></span><span>      </span><span class="annot"><span class="hs-identifier hs-type">Left</span></span><span> </span><span id="local-6989586621679042647"><span class="annot"><span class="annottext">EncodingError
+</span><a href="#local-6989586621679042647"><span class="hs-identifier hs-var">e</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">GetEnvVarError -&gt; Either GetEnvVarError b
+forall a b. a -&gt; Either a b
+</span><span class="hs-identifier hs-var">Left</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">EncodingError -&gt; GetEnvVarError
+</span><a href="CheckedIO.Environment.html#GetEnvVarEncodingError"><span class="hs-identifier hs-var">GetEnvVarEncodingError</span></a></span><span> </span><span class="annot"><span class="annottext">EncodingError
+</span><a href="#local-6989586621679042647"><span class="hs-identifier hs-var">e</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-55"></span><span>
+</span><span id="line-56"></span><span class="hs-comment">{----- lookupEnv -----}</span><span>
+</span><span id="line-57"></span><span>
+</span><span id="line-58"></span><span class="annot"><span class="hs-comment">-- | Same as 'lookupEnv', except in 'IO'.</span></span><span>
+</span><span id="line-59"></span><span id="local-6989586621679042516"><span class="annot"><a href="CheckedIO.Environment.html#lookupEnvIO"><span class="hs-identifier hs-type">lookupEnvIO</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="CheckedIO.Core.html#MonadRunIO"><span class="hs-identifier hs-type">MonadRunIO</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679042516"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679042516"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">Maybe</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span class="hs-special">)</span></span><span>
+</span><span id="line-60"></span><span id="lookupEnvIO"><span class="annot"><span class="annottext">lookupEnvIO :: forall (m :: * -&gt; *). MonadRunIO m =&gt; String -&gt; m (Maybe String)
+</span><a href="CheckedIO.Environment.html#lookupEnvIO"><span class="hs-identifier hs-var hs-var">lookupEnvIO</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">UIO (Either EncodingError (Maybe String)) -&gt; m (Maybe String)
+forall e (m :: * -&gt; *) a.
+(Exception e, MonadRunIO m) =&gt;
+UIO (Either e a) -&gt; m a
+</span><a href="CheckedIO.Core.html#uioToIO"><span class="hs-identifier hs-var">uioToIO</span></a></span><span> </span><span class="annot"><span class="annottext">(UIO (Either EncodingError (Maybe String)) -&gt; m (Maybe String))
+-&gt; (String -&gt; UIO (Either EncodingError (Maybe String)))
+-&gt; String
+-&gt; m (Maybe String)
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; UIO (Either EncodingError (Maybe String))
+forall e (m :: * -&gt; *).
+MonadRunIOE e m =&gt;
+String -&gt; m (Either EncodingError (Maybe String))
+</span><a href="CheckedIO.Environment.html#lookupEnvUIO"><span class="hs-identifier hs-var">lookupEnvUIO</span></a></span><span>
+</span><span id="line-61"></span><span>
+</span><span id="line-62"></span><span class="annot"><span class="hs-comment">-- | Same as 'lookupEnvUIO', except throwing the 'EncodingError'.</span></span><span>
+</span><span id="line-63"></span><span id="local-6989586621679042518"><span class="annot"><a href="CheckedIO.Environment.html#lookupEnv"><span class="hs-identifier hs-type">lookupEnv</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="CheckedIO.Core.html#MonadRunIOE"><span class="hs-identifier hs-type">MonadRunIOE</span></a></span><span> </span><span class="annot"><a href="CheckedIO.Foreign.html#EncodingError"><span class="hs-identifier hs-type">EncodingError</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679042518"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679042518"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">Maybe</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span class="hs-special">)</span></span><span>
+</span><span id="line-64"></span><span id="lookupEnv"><span class="annot"><span class="annottext">lookupEnv :: forall (m :: * -&gt; *).
+MonadRunIOE EncodingError m =&gt;
+String -&gt; m (Maybe String)
+</span><a href="CheckedIO.Environment.html#lookupEnv"><span class="hs-identifier hs-var hs-var">lookupEnv</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">UIO (Either EncodingError (Maybe String)) -&gt; m (Maybe String)
+forall e (m :: * -&gt; *) a.
+MonadRunIOE e m =&gt;
+UIO (Either e a) -&gt; m a
+</span><a href="CheckedIO.Core.html#fromUIO"><span class="hs-identifier hs-var">fromUIO</span></a></span><span> </span><span class="annot"><span class="annottext">(UIO (Either EncodingError (Maybe String)) -&gt; m (Maybe String))
+-&gt; (String -&gt; UIO (Either EncodingError (Maybe String)))
+-&gt; String
+-&gt; m (Maybe String)
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; UIO (Either EncodingError (Maybe String))
+forall e (m :: * -&gt; *).
+MonadRunIOE e m =&gt;
+String -&gt; m (Either EncodingError (Maybe String))
+</span><a href="CheckedIO.Environment.html#lookupEnvUIO"><span class="hs-identifier hs-var">lookupEnvUIO</span></a></span><span>
+</span><span id="line-65"></span><span>
+</span><span id="line-66"></span><span class="annot"><span class="hs-comment">-- | Look up the given environment variable.</span></span><span>
+</span><span id="line-67"></span><span id="local-6989586621679042512"><span id="local-6989586621679042513"><span class="annot"><a href="CheckedIO.Environment.html#lookupEnvUIO"><span class="hs-identifier hs-type">lookupEnvUIO</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="CheckedIO.Core.html#MonadRunIOE"><span class="hs-identifier hs-type">MonadRunIOE</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679042512"><span class="hs-identifier hs-type">e</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679042513"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679042513"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">Either</span></span><span> </span><span class="annot"><a href="CheckedIO.Foreign.html#EncodingError"><span class="hs-identifier hs-type">EncodingError</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">Maybe</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span class="hs-special">)</span><span class="hs-special">)</span></span></span><span>
+</span><span id="line-68"></span><span id="lookupEnvUIO"><span class="annot"><span class="annottext">lookupEnvUIO :: forall e (m :: * -&gt; *).
+MonadRunIOE e m =&gt;
+String -&gt; m (Either EncodingError (Maybe String))
+</span><a href="CheckedIO.Environment.html#lookupEnvUIO"><span class="hs-identifier hs-var hs-var">lookupEnvUIO</span></a></span></span><span> </span><span id="local-6989586621679042668"><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679042668"><span class="hs-identifier hs-var">name</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-69"></span><span>  </span><span class="annot"><span class="annottext">(Either EncodingError (Either EncodingError (Maybe String))
+ -&gt; Either EncodingError (Maybe String))
+-&gt; m (Either EncodingError (Either EncodingError (Maybe String)))
+-&gt; m (Either EncodingError (Maybe String))
+forall a b. (a -&gt; b) -&gt; m a -&gt; m b
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-identifier hs-var">fmap</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">(EncodingError -&gt; Either EncodingError (Maybe String))
+-&gt; (Either EncodingError (Maybe String)
+    -&gt; Either EncodingError (Maybe String))
+-&gt; Either EncodingError (Either EncodingError (Maybe String))
+-&gt; Either EncodingError (Maybe String)
+forall a c b. (a -&gt; c) -&gt; (b -&gt; c) -&gt; Either a b -&gt; c
+</span><span class="hs-identifier hs-var">either</span></span><span> </span><span class="annot"><span class="annottext">EncodingError -&gt; Either EncodingError (Maybe String)
+forall a b. a -&gt; Either a b
+</span><span class="hs-identifier hs-var">Left</span></span><span> </span><span class="annot"><span class="annottext">Either EncodingError (Maybe String)
+-&gt; Either EncodingError (Maybe String)
+forall a. a -&gt; a
+</span><span class="hs-identifier hs-var">id</span></span><span class="hs-special">)</span><span> </span><span class="annot"><span class="annottext">(m (Either EncodingError (Either EncodingError (Maybe String)))
+ -&gt; m (Either EncodingError (Maybe String)))
+-&gt; (IOE
+      e (Either EncodingError (Either EncodingError (Maybe String)))
+    -&gt; m (Either EncodingError (Either EncodingError (Maybe String))))
+-&gt; IOE
+     e (Either EncodingError (Either EncodingError (Maybe String)))
+-&gt; m (Either EncodingError (Maybe String))
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">IOE e (Either EncodingError (Either EncodingError (Maybe String)))
+-&gt; m (Either EncodingError (Either EncodingError (Maybe String)))
+forall a. IOE e a -&gt; m a
+forall e (m :: * -&gt; *) a. MonadRunIOE e m =&gt; IOE e a -&gt; m a
+</span><a href="CheckedIO.Core.html#runIOE"><span class="hs-identifier hs-var">runIOE</span></a></span><span> </span><span class="annot"><span class="annottext">(IOE e (Either EncodingError (Either EncodingError (Maybe String)))
+ -&gt; m (Either EncodingError (Maybe String)))
+-&gt; IOE
+     e (Either EncodingError (Either EncodingError (Maybe String)))
+-&gt; m (Either EncodingError (Maybe String))
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span>
+</span><span id="line-70"></span><span>    </span><span class="annot"><span class="annottext">String
+-&gt; (forall {s}.
+    CString s -&gt; IOE e (Either EncodingError (Maybe String)))
+-&gt; IOE
+     e (Either EncodingError (Either EncodingError (Maybe String)))
+forall e (m :: * -&gt; *) a.
+MonadRunAsIOE e m =&gt;
+String
+-&gt; (forall s. CString s -&gt; m a) -&gt; m (Either EncodingError a)
+</span><a href="CheckedIO.Foreign.html#withCString"><span class="hs-identifier hs-var">withCString</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679042668"><span class="hs-identifier hs-var">name</span></a></span><span> </span><span class="annot"><span class="annottext">((forall {s}.
+  CString s -&gt; IOE e (Either EncodingError (Maybe String)))
+ -&gt; IOE
+      e (Either EncodingError (Either EncodingError (Maybe String))))
+-&gt; (forall {s}.
+    CString s -&gt; IOE e (Either EncodingError (Maybe String)))
+-&gt; IOE
+     e (Either EncodingError (Either EncodingError (Maybe String)))
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-glyph">\</span><span class="hs-special">(</span><span class="annot"><a href="CheckedIO.Foreign.html#CString"><span class="hs-identifier hs-type">CString</span></a></span><span> </span><span id="local-6989586621679042685"><span class="annot"><span class="annottext">Ptr CChar
+</span><a href="#local-6989586621679042685"><span class="hs-identifier hs-var">name'</span></a></span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-keyword">do</span><span>
+</span><span id="line-71"></span><span>      </span><span id="local-6989586621679042686"><span class="annot"><span class="annottext">Ptr CChar
+</span><a href="#local-6989586621679042686"><span class="hs-identifier hs-var">res</span></a></span></span><span> </span><span class="hs-glyph">&lt;-</span><span> </span><span class="annot"><span class="annottext">UIO (Ptr CChar) -&gt; IOE e (Ptr CChar)
+forall e (m :: * -&gt; *) a. MonadRunIOE e m =&gt; UIO a -&gt; m a
+</span><a href="CheckedIO.Core.html#runUIO"><span class="hs-identifier hs-var">runUIO</span></a></span><span> </span><span class="annot"><span class="annottext">(UIO (Ptr CChar) -&gt; IOE e (Ptr CChar))
+-&gt; UIO (Ptr CChar) -&gt; IOE e (Ptr CChar)
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Ptr CChar -&gt; UIO (Ptr CChar)
+</span><a href="CheckedIO.Environment.html#c_getenv"><span class="hs-identifier hs-var">c_getenv</span></a></span><span> </span><span class="annot"><span class="annottext">Ptr CChar
+</span><a href="#local-6989586621679042685"><span class="hs-identifier hs-var">name'</span></a></span><span>
+</span><span id="line-72"></span><span>      </span><span class="hs-keyword">if</span><span> </span><span class="annot"><span class="annottext">Ptr CChar
+</span><a href="#local-6989586621679042686"><span class="hs-identifier hs-var">res</span></a></span><span> </span><span class="annot"><span class="annottext">Ptr CChar -&gt; Ptr CChar -&gt; Bool
+forall a. Eq a =&gt; a -&gt; a -&gt; Bool
+</span><span class="hs-operator hs-var">==</span></span><span> </span><span class="annot"><span class="annottext">Ptr CChar
+forall a. Ptr a
+</span><span class="hs-identifier hs-var">nullPtr</span></span><span>
+</span><span id="line-73"></span><span>        </span><span class="hs-keyword">then</span><span> </span><span class="annot"><span class="annottext">Either EncodingError (Maybe String)
+-&gt; IOE e (Either EncodingError (Maybe String))
+forall a. a -&gt; IOE e a
+forall (f :: * -&gt; *) a. Applicative f =&gt; a -&gt; f a
+</span><span class="hs-identifier hs-var">pure</span></span><span> </span><span class="annot"><span class="annottext">(Either EncodingError (Maybe String)
+ -&gt; IOE e (Either EncodingError (Maybe String)))
+-&gt; Either EncodingError (Maybe String)
+-&gt; IOE e (Either EncodingError (Maybe String))
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">Maybe String -&gt; Either EncodingError (Maybe String)
+forall a b. b -&gt; Either a b
+</span><span class="hs-identifier hs-var">Right</span></span><span> </span><span class="annot"><span class="annottext">Maybe String
+forall a. Maybe a
+</span><span class="hs-identifier hs-var">Nothing</span></span><span>
+</span><span id="line-74"></span><span>        </span><span class="hs-keyword">else</span><span> </span><span class="annot"><span class="annottext">(String -&gt; Maybe String)
+-&gt; Either EncodingError String
+-&gt; Either EncodingError (Maybe String)
+forall a b.
+(a -&gt; b) -&gt; Either EncodingError a -&gt; Either EncodingError b
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-identifier hs-var">fmap</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; Maybe String
+forall a. a -&gt; Maybe a
+</span><span class="hs-identifier hs-var">Just</span></span><span> </span><span class="annot"><span class="annottext">(Either EncodingError String
+ -&gt; Either EncodingError (Maybe String))
+-&gt; IOE e (Either EncodingError String)
+-&gt; IOE e (Either EncodingError (Maybe String))
+forall (f :: * -&gt; *) a b. Functor f =&gt; (a -&gt; b) -&gt; f a -&gt; f b
+</span><span class="hs-operator hs-var">&lt;$&gt;</span></span><span> </span><span class="annot"><span class="annottext">CString Any -&gt; IOE e (Either EncodingError String)
+forall e (m :: * -&gt; *) s.
+MonadRunIOE e m =&gt;
+CString s -&gt; m (Either EncodingError String)
+</span><a href="CheckedIO.Foreign.html#fromCString"><span class="hs-identifier hs-var">fromCString</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">Ptr CChar -&gt; CString Any
+forall s. Ptr CChar -&gt; CString s
+</span><a href="CheckedIO.Foreign.html#CString"><span class="hs-identifier hs-var">CString</span></a></span><span> </span><span class="annot"><span class="annottext">Ptr CChar
+</span><a href="#local-6989586621679042686"><span class="hs-identifier hs-var">res</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-75"></span><span>
+</span><span id="line-76"></span><span class="hs-comment">-- TODO: add Windows support</span><span>
+</span><span id="line-77"></span><span class="hs-keyword">foreign</span><span> </span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-keyword">ccall</span></span><span> </span><span class="annot"><span class="hs-keyword">unsafe</span></span><span> </span><span class="annot"><span class="hs-string">&quot;getenv&quot;</span></span><span>
+</span><span id="line-78"></span><span>   </span><span id="c_getenv"><span class="annot"><a href="CheckedIO.Environment.html#c_getenv"><span class="hs-identifier hs-var">c_getenv</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Ptr</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">CChar</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="CheckedIO.Core.html#UIO"><span class="hs-identifier hs-type">UIO</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">Ptr</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">CChar</span></span><span class="hs-special">)</span><span>
+</span><span id="line-79"></span></pre></body></html>

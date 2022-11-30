@@ -1,0 +1,38 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="annot"><span class="hs-comment">{-|
+Same as @Prelude@, except using the new 'IO' type.
+-}</span></span><span>
+</span><span id="line-4"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">CheckedIO.Prelude</span><span> </span><span class="hs-special">(</span><span>
+</span><span id="line-5"></span><span>  </span><span class="annot"><span class="hs-comment">-- * CheckedIO.Prelude.NoIO</span></span><span>
+</span><span id="line-6"></span><span>  </span><span class="hs-keyword">module</span><span> </span><span class="annot"><a href="CheckedIO.Prelude.NoIO.html"><span class="hs-identifier">CheckedIO.Prelude.NoIO</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-7"></span><span>
+</span><span id="line-8"></span><span>  </span><span class="annot"><span class="hs-comment">-- * CheckedIO.Core</span></span><span>
+</span><span id="line-9"></span><span>  </span><span class="hs-keyword">module</span><span> </span><span class="annot"><a href="CheckedIO.Core.html"><span class="hs-identifier">CheckedIO.Core</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-10"></span><span>
+</span><span id="line-11"></span><span>  </span><span class="annot"><span class="hs-comment">-- * Reimplemented prelude functions</span></span><span>
+</span><span id="line-12"></span><span>  </span><span class="annot"><a href="CheckedIO.Prelude.html#putStrLn"><span class="hs-identifier">putStrLn</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-13"></span><span>  </span><span class="annot"><a href="CheckedIO.Prelude.html#getLine"><span class="hs-identifier">getLine</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-14"></span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-15"></span><span>
+</span><span id="line-16"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Prelude</span></span><span>
+</span><span id="line-17"></span><span>
+</span><span id="line-18"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="CheckedIO.Core.html"><span class="hs-identifier">CheckedIO.Core</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><a href="CheckedIO.Core.html#IO"><span class="hs-identifier">IO</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-19"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><a href="CheckedIO.Core.html"><span class="hs-identifier">CheckedIO.Core</span></a></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">Core</span></span><span>
+</span><span id="line-20"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="CheckedIO.Prelude.NoIO.html"><span class="hs-identifier">CheckedIO.Prelude.NoIO</span></a></span><span>
+</span><span id="line-21"></span><span>
+</span><span id="line-22"></span><span class="annot"><a href="CheckedIO.Prelude.html#putStrLn"><span class="hs-identifier hs-type">putStrLn</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="CheckedIO.Core.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-special">)</span><span>
+</span><span id="line-23"></span><span id="putStrLn"><span class="annot"><span class="annottext">putStrLn :: String -&gt; IO ()
+</span><a href="CheckedIO.Prelude.html#putStrLn"><span class="hs-identifier hs-var hs-var">putStrLn</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">UnsafeIO () -&gt; IO ()
+forall (m :: * -&gt; *) a. MonadRunIO m =&gt; UnsafeIO a -&gt; m a
+</span><a href="CheckedIO.Core.html#checkIO"><span class="hs-identifier hs-var">Core.checkIO</span></a></span><span> </span><span class="annot"><span class="annottext">(UnsafeIO () -&gt; IO ())
+-&gt; (String -&gt; UnsafeIO ()) -&gt; String -&gt; IO ()
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; UnsafeIO ()
+</span><span class="hs-identifier hs-var">Prelude.putStrLn</span></span><span>
+</span><span id="line-24"></span><span>
+</span><span id="line-25"></span><span class="annot"><a href="CheckedIO.Prelude.html#getLine"><span class="hs-identifier hs-type">getLine</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="CheckedIO.Core.html#IO"><span class="hs-identifier hs-type">IO</span></a></span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span>
+</span><span id="line-26"></span><span id="getLine"><span class="annot"><span class="annottext">getLine :: IO String
+</span><a href="CheckedIO.Prelude.html#getLine"><span class="hs-identifier hs-var hs-var">getLine</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">UnsafeIO String -&gt; IO String
+forall (m :: * -&gt; *) a. MonadRunIO m =&gt; UnsafeIO a -&gt; m a
+</span><a href="CheckedIO.Core.html#checkIO"><span class="hs-identifier hs-var">Core.checkIO</span></a></span><span> </span><span class="annot"><span class="annottext">UnsafeIO String
+</span><span class="hs-identifier hs-var">Prelude.getLine</span></span><span>
+</span><span id="line-27"></span></pre></body></html>

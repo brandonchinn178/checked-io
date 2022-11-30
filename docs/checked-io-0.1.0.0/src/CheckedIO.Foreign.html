@@ -1,0 +1,191 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE FlexibleContexts #-}</span><span>
+</span><span id="line-2"></span><span class="hs-pragma">{-# LANGUAGE RankNTypes #-}</span><span>
+</span><span id="line-3"></span><span>
+</span><span id="line-4"></span><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">CheckedIO.Foreign</span><span> </span><span class="hs-special">(</span><span>
+</span><span id="line-5"></span><span>  </span><span class="annot"><a href="CheckedIO.Foreign.html#CString"><span class="hs-identifier">CString</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">,</span><span>
+</span><span id="line-6"></span><span>  </span><span class="annot"><a href="CheckedIO.Foreign.html#withCString"><span class="hs-identifier">withCString</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-7"></span><span>  </span><span class="annot"><a href="CheckedIO.Foreign.html#fromCString"><span class="hs-identifier">fromCString</span></a></span><span class="hs-special">,</span><span>
+</span><span id="line-8"></span><span>
+</span><span id="line-9"></span><span>  </span><span class="annot"><span class="hs-comment">-- * Encodings</span></span><span>
+</span><span id="line-10"></span><span>  </span><span class="annot"><a href="CheckedIO.Foreign.html#EncodingError"><span class="hs-identifier">EncodingError</span></a></span><span> </span><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">,</span><span>
+</span><span id="line-11"></span><span class="hs-special">)</span><span> </span><span class="hs-keyword">where</span><span>
+</span><span id="line-12"></span><span>
+</span><span id="line-13"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">Foreign.C.String</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">GHC</span></span><span>
+</span><span id="line-14"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Foreign.C.Types</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">CChar</span></span><span class="hs-special">)</span><span>
+</span><span id="line-15"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><span class="hs-identifier">Foreign.Ptr</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier">Ptr</span></span><span class="hs-special">)</span><span>
+</span><span id="line-16"></span><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="annot"><span class="hs-identifier">GHC.IO.Exception</span></span><span> </span><span class="hs-keyword">as</span><span> </span><span class="annot"><span class="hs-identifier">GHC</span></span><span>
+</span><span id="line-17"></span><span>
+</span><span id="line-18"></span><span class="hs-keyword">import</span><span> </span><span class="annot"><a href="CheckedIO.html"><span class="hs-identifier">CheckedIO</span></a></span><span>
+</span><span id="line-19"></span><span>
+</span><span id="line-20"></span><span class="hs-comment">-- | A @Ptr CChar@ with a state @s@ to ensure that it's not used</span><span>
+</span><span id="line-21"></span><span class="hs-comment">-- after being destroyed.</span><span>
+</span><span id="line-22"></span><span class="hs-keyword">newtype</span><span> </span><span id="CString"><span class="annot"><a href="CheckedIO.Foreign.html#CString"><span class="hs-identifier hs-var">CString</span></a></span></span><span> </span><span id="local-6989586621679042327"><span class="annot"><a href="#local-6989586621679042327"><span class="hs-identifier hs-type">s</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="CString"><span class="annot"><a href="CheckedIO.Foreign.html#CString"><span class="hs-identifier hs-var">CString</span></a></span></span><span> </span><span class="hs-special">{</span><span> </span><span id="unCString"><span class="annot"><span class="annottext">forall s. CString s -&gt; Ptr CChar
+</span><a href="CheckedIO.Foreign.html#unCString"><span class="hs-identifier hs-var hs-var">unCString</span></a></span></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><span class="hs-identifier hs-type">Ptr</span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">CChar</span></span><span> </span><span class="hs-special">}</span><span>
+</span><span id="line-23"></span><span>
+</span><span id="line-24"></span><span id="local-6989586621679042331"><span id="local-6989586621679042332"><span id="local-6989586621679042335"><span class="annot"><a href="CheckedIO.Foreign.html#withCString"><span class="hs-identifier hs-type">withCString</span></a></span><span> </span><span class="hs-glyph">::</span><span>
+</span><span id="line-25"></span><span>  </span><span class="annot"><a href="CheckedIO.Core.html#MonadRunAsIOE"><span class="hs-identifier hs-type">MonadRunAsIOE</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679042331"><span class="hs-identifier hs-type">e</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679042332"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span>
+</span><span id="line-26"></span><span>  </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span>
+</span><span id="line-27"></span><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">(</span><span class="hs-keyword">forall</span><span> </span><span id="local-6989586621679042334"><span class="annot"><a href="#local-6989586621679042334"><span class="hs-identifier hs-type">s</span></a></span></span><span class="hs-operator">.</span><span> </span><span class="annot"><a href="CheckedIO.Foreign.html#CString"><span class="hs-identifier hs-type">CString</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679042334"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679042332"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679042335"><span class="hs-identifier hs-type">a</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-28"></span><span>  </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679042332"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">Either</span></span><span> </span><span class="annot"><a href="CheckedIO.Foreign.html#EncodingError"><span class="hs-identifier hs-type">EncodingError</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679042335"><span class="hs-identifier hs-type">a</span></a></span><span class="hs-special">)</span></span></span></span><span>
+</span><span id="line-29"></span><span id="withCString"><span class="annot"><span class="annottext">withCString :: forall e (m :: * -&gt; *) a.
+MonadRunAsIOE e m =&gt;
+String
+-&gt; (forall s. CString s -&gt; m a) -&gt; m (Either EncodingError a)
+</span><a href="CheckedIO.Foreign.html#withCString"><span class="hs-identifier hs-var hs-var">withCString</span></a></span></span><span> </span><span id="local-6989586621679042397"><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679042397"><span class="hs-identifier hs-var">s</span></a></span></span><span> </span><span id="local-6989586621679042398"><span class="annot"><span class="annottext">forall s. CString s -&gt; m a
+</span><a href="#local-6989586621679042398"><span class="hs-identifier hs-var">f</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-30"></span><span>  </span><span class="annot"><span class="annottext">((forall a. m a -&gt; IOE e a) -&gt; IOE e (Either EncodingError a))
+-&gt; m (Either EncodingError a)
+forall b. ((forall a. m a -&gt; IOE e a) -&gt; IOE e b) -&gt; m b
+forall e (m :: * -&gt; *) b.
+MonadRunAsIOE e m =&gt;
+((forall a. m a -&gt; IOE e a) -&gt; IOE e b) -&gt; m b
+</span><a href="CheckedIO.Core.html#withRunAsIOE"><span class="hs-identifier hs-var">withRunAsIOE</span></a></span><span> </span><span class="annot"><span class="annottext">(((forall a. m a -&gt; IOE e a) -&gt; IOE e (Either EncodingError a))
+ -&gt; m (Either EncodingError a))
+-&gt; ((forall a. m a -&gt; IOE e a) -&gt; IOE e (Either EncodingError a))
+-&gt; m (Either EncodingError a)
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="hs-glyph">\</span><span id="local-6989586621679042400"><span class="annot"><span class="annottext">forall a. m a -&gt; IOE e a
+</span><a href="#local-6989586621679042400"><span class="hs-identifier hs-var">run</span></a></span></span><span> </span><span class="hs-glyph">-&gt;</span><span>
+</span><span id="line-31"></span><span>    </span><span class="annot"><span class="annottext">(SomeException -&gt; EncodingError)
+-&gt; UnsafeIO a -&gt; IOE e (Either EncodingError a)
+forall e' (m :: * -&gt; *) e a.
+MonadRunIOE e' m =&gt;
+(SomeException -&gt; e) -&gt; UnsafeIO a -&gt; m (Either e a)
+</span><a href="CheckedIO.Core.html#checkUIOWith"><span class="hs-identifier hs-var">checkUIOWith</span></a></span><span> </span><span class="annot"><span class="annottext">SomeException -&gt; EncodingError
+</span><a href="#local-6989586621679042402"><span class="hs-identifier hs-var">checkE</span></a></span><span> </span><span class="annot"><span class="annottext">(UnsafeIO a -&gt; IOE e (Either EncodingError a))
+-&gt; UnsafeIO a -&gt; IOE e (Either EncodingError a)
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; (Ptr CChar -&gt; UnsafeIO a) -&gt; UnsafeIO a
+forall a. String -&gt; (Ptr CChar -&gt; IO a) -&gt; IO a
+</span><span class="hs-identifier hs-var">GHC.withCString</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679042397"><span class="hs-identifier hs-var">s</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="annottext">IOE e a -&gt; UnsafeIO a
+forall e a. Exception e =&gt; IOE e a -&gt; UnsafeIO a
+</span><a href="CheckedIO.Core.html#uncheckIOE"><span class="hs-identifier hs-var">uncheckIOE</span></a></span><span> </span><span class="annot"><span class="annottext">(IOE e a -&gt; UnsafeIO a)
+-&gt; (Ptr CChar -&gt; IOE e a) -&gt; Ptr CChar -&gt; UnsafeIO a
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">m a -&gt; IOE e a
+forall a. m a -&gt; IOE e a
+</span><a href="#local-6989586621679042400"><span class="hs-identifier hs-var">run</span></a></span><span> </span><span class="annot"><span class="annottext">(m a -&gt; IOE e a) -&gt; (Ptr CChar -&gt; m a) -&gt; Ptr CChar -&gt; IOE e a
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">CString Any -&gt; m a
+forall s. CString s -&gt; m a
+</span><a href="#local-6989586621679042398"><span class="hs-identifier hs-var">f</span></a></span><span> </span><span class="annot"><span class="annottext">(CString Any -&gt; m a)
+-&gt; (Ptr CChar -&gt; CString Any) -&gt; Ptr CChar -&gt; m a
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">Ptr CChar -&gt; CString Any
+forall s. Ptr CChar -&gt; CString s
+</span><a href="CheckedIO.Foreign.html#CString"><span class="hs-identifier hs-var">CString</span></a></span><span class="hs-special">)</span><span>
+</span><span id="line-32"></span><span>  </span><span class="hs-keyword">where</span><span>
+</span><span id="line-33"></span><span>    </span><span id="local-6989586621679042402"><span class="annot"><span class="annottext">checkE :: SomeException -&gt; EncodingError
+</span><a href="#local-6989586621679042402"><span class="hs-identifier hs-var hs-var">checkE</span></a></span></span><span> </span><span id="local-6989586621679042412"><span class="annot"><span class="annottext">SomeException
+</span><a href="#local-6989586621679042412"><span class="hs-identifier hs-var">e</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-34"></span><span>      </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">SomeException -&gt; Maybe IOException
+forall e. Exception e =&gt; SomeException -&gt; Maybe e
+</span><span class="hs-identifier hs-var">fromException</span></span><span> </span><span class="annot"><span class="annottext">SomeException
+</span><a href="#local-6989586621679042412"><span class="hs-identifier hs-var">e</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-35"></span><span>        </span><span class="annot"><span class="hs-identifier hs-type">Just</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">GHC.IOError</span></span><span> </span><span class="annot"><span class="annottext">Maybe Handle
+</span><span class="hs-identifier">_</span></span><span> </span><span class="annot"><span class="annottext">IOErrorType
+</span><span class="hs-identifier">_</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;recoverEncode&quot;</span></span><span> </span><span id="local-6989586621679042415"><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679042415"><span class="hs-identifier hs-var">msg</span></a></span></span><span> </span><span class="annot"><span class="annottext">Maybe CInt
+</span><span class="hs-identifier">_</span></span><span> </span><span class="annot"><span class="annottext">Maybe String
+</span><span class="hs-identifier">_</span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">String -&gt; EncodingError
+</span><a href="CheckedIO.Foreign.html#EncodingError"><span class="hs-identifier hs-var">EncodingError</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679042415"><span class="hs-identifier hs-var">msg</span></a></span><span>
+</span><span id="line-36"></span><span>        </span><span class="annot"><span class="annottext">Maybe IOException
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">String -&gt; EncodingError
+forall a. HasCallStack =&gt; String -&gt; a
+</span><span class="hs-identifier hs-var">error</span></span><span> </span><span class="annot"><span class="annottext">(String -&gt; EncodingError) -&gt; String -&gt; EncodingError
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;Unexpected encoding error: &quot;</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; String -&gt; String
+forall a. [a] -&gt; [a] -&gt; [a]
+</span><span class="hs-operator hs-var">++</span></span><span> </span><span class="annot"><span class="annottext">SomeException -&gt; String
+forall a. Show a =&gt; a -&gt; String
+</span><span class="hs-identifier hs-var">show</span></span><span> </span><span class="annot"><span class="annottext">SomeException
+</span><a href="#local-6989586621679042412"><span class="hs-identifier hs-var">e</span></a></span><span>
+</span><span id="line-37"></span><span>
+</span><span id="line-38"></span><span id="local-6989586621679042375"><span id="local-6989586621679042376"><span id="local-6989586621679042377"><span class="annot"><a href="CheckedIO.Foreign.html#fromCString"><span class="hs-identifier hs-type">fromCString</span></a></span><span> </span><span class="hs-glyph">::</span><span> </span><span class="annot"><a href="CheckedIO.Core.html#MonadRunIOE"><span class="hs-identifier hs-type">MonadRunIOE</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679042375"><span class="hs-identifier hs-type">e</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679042376"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-glyph">=&gt;</span><span> </span><span class="annot"><a href="CheckedIO.Foreign.html#CString"><span class="hs-identifier hs-type">CString</span></a></span><span> </span><span class="annot"><a href="#local-6989586621679042377"><span class="hs-identifier hs-type">s</span></a></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><a href="#local-6989586621679042376"><span class="hs-identifier hs-type">m</span></a></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">Either</span></span><span> </span><span class="annot"><a href="CheckedIO.Foreign.html#EncodingError"><span class="hs-identifier hs-type">EncodingError</span></a></span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span class="hs-special">)</span></span></span></span><span>
+</span><span id="line-39"></span><span id="fromCString"><span class="annot"><span class="annottext">fromCString :: forall e (m :: * -&gt; *) s.
+MonadRunIOE e m =&gt;
+CString s -&gt; m (Either EncodingError String)
+</span><a href="CheckedIO.Foreign.html#fromCString"><span class="hs-identifier hs-var hs-var">fromCString</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span class="annot"><span class="annottext">(SomeException -&gt; EncodingError)
+-&gt; UnsafeIO String -&gt; m (Either EncodingError String)
+forall e' (m :: * -&gt; *) e a.
+MonadRunIOE e' m =&gt;
+(SomeException -&gt; e) -&gt; UnsafeIO a -&gt; m (Either e a)
+</span><a href="CheckedIO.Core.html#checkUIOWith"><span class="hs-identifier hs-var">checkUIOWith</span></a></span><span> </span><span class="annot"><span class="annottext">SomeException -&gt; EncodingError
+</span><a href="#local-6989586621679042421"><span class="hs-identifier hs-var">checkE</span></a></span><span> </span><span class="annot"><span class="annottext">(UnsafeIO String -&gt; m (Either EncodingError String))
+-&gt; (CString s -&gt; UnsafeIO String)
+-&gt; CString s
+-&gt; m (Either EncodingError String)
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">Ptr CChar -&gt; UnsafeIO String
+</span><span class="hs-identifier hs-var">GHC.peekCString</span></span><span> </span><span class="annot"><span class="annottext">(Ptr CChar -&gt; UnsafeIO String)
+-&gt; (CString s -&gt; Ptr CChar) -&gt; CString s -&gt; UnsafeIO String
+forall b c a. (b -&gt; c) -&gt; (a -&gt; b) -&gt; a -&gt; c
+</span><span class="hs-operator hs-var">.</span></span><span> </span><span class="annot"><span class="annottext">CString s -&gt; Ptr CChar
+forall s. CString s -&gt; Ptr CChar
+</span><a href="CheckedIO.Foreign.html#unCString"><span class="hs-identifier hs-var">unCString</span></a></span><span>
+</span><span id="line-40"></span><span>  </span><span class="hs-keyword">where</span><span>
+</span><span id="line-41"></span><span>    </span><span id="local-6989586621679042421"><span class="annot"><span class="annottext">checkE :: SomeException -&gt; EncodingError
+</span><a href="#local-6989586621679042421"><span class="hs-identifier hs-var hs-var">checkE</span></a></span></span><span> </span><span id="local-6989586621679042427"><span class="annot"><span class="annottext">SomeException
+</span><a href="#local-6989586621679042427"><span class="hs-identifier hs-var">e</span></a></span></span><span> </span><span class="hs-glyph">=</span><span>
+</span><span id="line-42"></span><span>      </span><span class="hs-keyword">case</span><span> </span><span class="annot"><span class="annottext">SomeException -&gt; Maybe IOException
+forall e. Exception e =&gt; SomeException -&gt; Maybe e
+</span><span class="hs-identifier hs-var">fromException</span></span><span> </span><span class="annot"><span class="annottext">SomeException
+</span><a href="#local-6989586621679042427"><span class="hs-identifier hs-var">e</span></a></span><span> </span><span class="hs-keyword">of</span><span>
+</span><span id="line-43"></span><span>        </span><span class="annot"><span class="hs-identifier hs-type">Just</span></span><span> </span><span class="hs-special">(</span><span class="annot"><span class="hs-identifier hs-type">GHC.IOError</span></span><span> </span><span class="annot"><span class="annottext">Maybe Handle
+</span><span class="hs-identifier">_</span></span><span> </span><span class="annot"><span class="annottext">IOErrorType
+</span><span class="hs-identifier">_</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;recoverDecode&quot;</span></span><span> </span><span id="local-6989586621679042428"><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679042428"><span class="hs-identifier hs-var">msg</span></a></span></span><span> </span><span class="annot"><span class="annottext">Maybe CInt
+</span><span class="hs-identifier">_</span></span><span> </span><span class="annot"><span class="annottext">Maybe String
+</span><span class="hs-identifier">_</span></span><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">String -&gt; EncodingError
+</span><a href="CheckedIO.Foreign.html#EncodingError"><span class="hs-identifier hs-var">EncodingError</span></a></span><span> </span><span class="annot"><span class="annottext">String
+</span><a href="#local-6989586621679042428"><span class="hs-identifier hs-var">msg</span></a></span><span>
+</span><span id="line-44"></span><span>        </span><span class="annot"><span class="annottext">Maybe IOException
+</span><span class="hs-identifier">_</span></span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="annot"><span class="annottext">String -&gt; EncodingError
+forall a. HasCallStack =&gt; String -&gt; a
+</span><span class="hs-identifier hs-var">error</span></span><span> </span><span class="annot"><span class="annottext">(String -&gt; EncodingError) -&gt; String -&gt; EncodingError
+forall a b. (a -&gt; b) -&gt; a -&gt; b
+</span><span class="hs-operator hs-var">$</span></span><span> </span><span class="annot"><span class="annottext">String
+</span><span class="hs-string">&quot;Unexpected encoding error: &quot;</span></span><span> </span><span class="annot"><span class="annottext">String -&gt; String -&gt; String
+forall a. [a] -&gt; [a] -&gt; [a]
+</span><span class="hs-operator hs-var">++</span></span><span> </span><span class="annot"><span class="annottext">SomeException -&gt; String
+forall a. Show a =&gt; a -&gt; String
+</span><span class="hs-identifier hs-var">show</span></span><span> </span><span class="annot"><span class="annottext">SomeException
+</span><a href="#local-6989586621679042427"><span class="hs-identifier hs-var">e</span></a></span><span>
+</span><span id="line-45"></span><span>
+</span><span id="line-46"></span><span class="hs-comment">{----- Encodings -----}</span><span>
+</span><span id="line-47"></span><span>
+</span><span id="line-48"></span><span class="hs-keyword">data</span><span> </span><span id="EncodingError"><span class="annot"><a href="CheckedIO.Foreign.html#EncodingError"><span class="hs-identifier hs-var">EncodingError</span></a></span></span><span> </span><span class="hs-glyph">=</span><span> </span><span id="EncodingError"><span class="annot"><a href="CheckedIO.Foreign.html#EncodingError"><span class="hs-identifier hs-var">EncodingError</span></a></span></span><span> </span><span class="annot"><span class="hs-identifier hs-type">String</span></span><span>
+</span><span id="line-49"></span><span>  </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span id="local-6989586621679042430"><span id="local-6989586621679042437"><span id="local-6989586621679042441"><span class="annot"><span class="annottext">Int -&gt; EncodingError -&gt; String -&gt; String
+[EncodingError] -&gt; String -&gt; String
+EncodingError -&gt; String
+(Int -&gt; EncodingError -&gt; String -&gt; String)
+-&gt; (EncodingError -&gt; String)
+-&gt; ([EncodingError] -&gt; String -&gt; String)
+-&gt; Show EncodingError
+forall a.
+(Int -&gt; a -&gt; String -&gt; String)
+-&gt; (a -&gt; String) -&gt; ([a] -&gt; String -&gt; String) -&gt; Show a
+$cshowsPrec :: Int -&gt; EncodingError -&gt; String -&gt; String
+showsPrec :: Int -&gt; EncodingError -&gt; String -&gt; String
+$cshow :: EncodingError -&gt; String
+show :: EncodingError -&gt; String
+$cshowList :: [EncodingError] -&gt; String -&gt; String
+showList :: [EncodingError] -&gt; String -&gt; String
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var hs-var hs-var">Show</span></span></span></span></span><span class="hs-special">,</span><span> </span><span id="local-6989586621679042446"><span id="local-6989586621679042451"><span class="annot"><span class="annottext">EncodingError -&gt; EncodingError -&gt; Bool
+(EncodingError -&gt; EncodingError -&gt; Bool)
+-&gt; (EncodingError -&gt; EncodingError -&gt; Bool) -&gt; Eq EncodingError
+forall a. (a -&gt; a -&gt; Bool) -&gt; (a -&gt; a -&gt; Bool) -&gt; Eq a
+$c== :: EncodingError -&gt; EncodingError -&gt; Bool
+== :: EncodingError -&gt; EncodingError -&gt; Bool
+$c/= :: EncodingError -&gt; EncodingError -&gt; Bool
+/= :: EncodingError -&gt; EncodingError -&gt; Bool
+</span><span class="hs-identifier hs-var hs-var hs-var hs-var hs-var hs-var">Eq</span></span></span></span><span class="hs-special">)</span><span>
+</span><span id="line-50"></span><span>
+</span><span id="line-51"></span><span class="hs-keyword">instance</span><span> </span><span id="local-6989586621679042461"><span id="local-6989586621679042465"><span id="local-6989586621679042468"><span class="annot"><span class="hs-identifier hs-type">Exception</span></span><span> </span><span class="annot"><a href="CheckedIO.Foreign.html#EncodingError"><span class="hs-identifier hs-type">EncodingError</span></a></span></span></span></span><span>
+</span><span id="line-52"></span></pre></body></html>
