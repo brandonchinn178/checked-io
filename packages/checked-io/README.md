@@ -181,24 +181,26 @@ Moving these changes into `base` would also allow libraries to start typing thei
 
 Here's one possible migration plan for migrating `base` to using checked exceptions:
 
-1. (Non-breaking change) Add new types
-    * Add `IOE` data type and alias `type IO = IOE SomeSyncException`
-    * Add `MonadRunIOE` and `MonadRunIO`, alias `MonadIO = MonadRunIO`
+1. Non-breaking changes
+    1. Add `IOE` type
+        * Add `IOE` data type and alias `type IO = IOE SomeSyncException`
+        * Add `MonadRunIOE` and `MonadRunIO`, alias `MonadIO = MonadRunIO`
+    1. Rename existing functions + add alias to original name, e.g.
+        * `tryIO = <old try implementation>; try = tryIO`
+        * `getEnvIO = <old getEnv implementation>; getEnv = getEnvIO`
+    1. Add functions with more precise types, e.g.
+        * `tryIOE :: IOE e a -> IOE e' (Either e a)`
+        * `getEnvIOE :: String -> IOE GetEnvError String`
+        * `getEnvUIO :: String -> UIO (Either GetEnvError String)`
+    1. (Optional) Add general functions
+        * `MonadRunAsIOE` + `MonadCatchIO`
+        * `tryM :: (MonadCatchIO e ioe, MonadRunIOE e' ioe') => ioe a -> ioe' (Either e a)`
 
-1. (Breaking change) Add more precise exception handling functions
-    * `throw :: e -> IOE e a`
-    * `try :: IOE e1 a -> IOE e2 (Either e1 a)`
-    * etc.
+1. Breaking change: switch unqualified functions to qualified, e.g.
+    * `try = tryIOE`
+    * `getEnv = getEnvIOE`
 
-1. (Breaking change) Incrementally convert all functions in `base` with stricter types
-    * See `getEnvIO` + `getEnv` + `getEnvUIO` for an example ([docs](https://brandonchinn178.github.io/checked-io/checked-io-0.1.0.0/CheckedIO-Environment.html#g:1))
-
-1. (Non-breaking change, optional) Generalize functions
-    * Add `MonadRunAsIOE`
-    * Add `MonadCatchIO`
-    * Add general functions like `tryM :: (MonadCatchIO e m1, MonadRunIOE e' m2) => m1 a -> m2 (Either e a)`
-
-1. (Breaking change, optional) Deprecate aliases (e.g. `MonadIO` => `MonadRunIO`)
+1. Breaking change (optional): deprecate/remove aliases (e.g. `MonadIO`)
 
 ## Acknowledgements + Prior work
 
