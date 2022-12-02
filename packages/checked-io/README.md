@@ -202,9 +202,7 @@ Here's one possible migration plan for migrating `base` to using checked excepti
 
 1. Breaking change (optional): deprecate/remove aliases (e.g. `MonadIO`)
 
-## Acknowledgements + Prior work
-
-This work has very much been a standing-on-the-shoulders-of-giants effort. Many thanks to `unliftio` and `safe-exceptions` for initiating conversation on sync vs async exceptions. Thanks to Mark Karpov, Matt Parsons, Michael Snoyman, and many others for their blog posts around better exceptions. And, of course, thanks to GHC developers for providing the foundation of this language upon which we can continue to build.
+## Prior work
 
 Other libraries that also attempt to improve exceptions in Haskell:
 
@@ -213,3 +211,7 @@ Other libraries that also attempt to improve exceptions in Haskell:
 * `unexceptionalio` provides an equivalent of `UIO`, but using `UIO` everywhere forces you to explicitly handle `Either` everywhere. If you have a series of operations that can fail, there's no way to exit early, due to Haskell's declarative paradigm (without a plugin like [`early`](https://hackage.haskell.org/package/early)).
 
 `checked-io` improves upon these libraries by still using the same runtime exception system under the hood, which allows for early exit and better performance (due to the fact that when a runtime exception occurs, the RTS automatically jumps to the last callstack that registered a catch handler).
+
+## Acknowledgements
+
+This work has very much been a standing-on-the-shoulders-of-giants effort. Many thanks to `unliftio` and `safe-exceptions` for initiating conversation on sync vs async exceptions. Thanks to Mark Karpov, Matt Parsons, Michael Snoyman, and many others for their blog posts around better exceptions. And, of course, thanks to GHC developers for providing the foundation of this language upon which we can continue to build.
