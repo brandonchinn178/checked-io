@@ -39,6 +39,7 @@ module CheckedIO.Core (
 
   -- * Exception handling
   throw,
+  throwIO,
   throwTo,
   throwImprecise,
   catch,
@@ -92,6 +93,7 @@ module CheckedIO.Core (
   -- * Exceptions in checked IO actions
   AnyException (..),
   SomeSyncException (..),
+  fromSyncException,
 ) where
 
 import Control.Concurrent (ThreadId)
@@ -227,6 +229,10 @@ uioToIO = fromUIOWith SomeSyncException
 -- | Throw the given exception.
 throw :: MonadRunIOE e m => e -> m a
 throw = runIOE . UnsafeIOE . GHC.throwIO . AnySyncException . SomeException
+
+-- | Helper equivalent to @liftE . throw@
+throwIO :: (Exception e, MonadRunIO m) => e -> m a
+throwIO = throw . SomeSyncException
 
 -- | Throw the given exception as an asynchronous exception to the given thread.
 throwTo :: (Exception e, MonadRunIOE e' m) => ThreadId -> e -> m ()
@@ -651,3 +657,7 @@ instance Show SomeSyncException where
   showsPrec p (SomeSyncException e) = showsPrec p e
 
 instance Exception SomeSyncException
+
+-- | Check a specific exception type in 'SomeSyncException'
+fromSyncException :: Exception e => SomeSyncException -> Maybe e
+fromSyncException (SomeSyncException e) = fromException (SomeException e)
