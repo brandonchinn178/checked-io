@@ -211,7 +211,7 @@ Here's one possible migration plan for migrating `base` to using checked excepti
 
 1. Breaking change (optional): deprecate/remove aliases (e.g. `MonadIO`)
 
-Discussion for this can be found at this issue: TODO.
+Discussion for this can be found at this issue: https://github.com/haskell/core-libraries-committee/issues/108.
 
 ## Alternative approaches
 
