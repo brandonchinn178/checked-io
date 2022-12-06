@@ -10,6 +10,7 @@ build-type:     Simple
 
 library
   exposed-modules:
+      CompositionExamples
       Example
   hs-source-dirs:
       src

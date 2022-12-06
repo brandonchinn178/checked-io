@@ -243,99 +243,108 @@ All of these approaches would still be possible (and even improved) if `checked-
 * `explicit-exception`, `mtl`, and `control-monad-exception` would all be able to use `UIO` as the base of the stack to force only exceptions specified in the `ExceptT` type to be thrown (Fixing issue #2 above, although still with the performance issue in #1).
 * `unexceptionalio` would be redundant, with `UIO` provided by `checked-io`
 * "Lightweight Checked Exceptions" would still be technically possible, using `checked-io`'s new `IO` monad, but is conceptually at odds with `checked-io`. See next section for details.
-* `control-monad-exception`, `exceptions-checked`, `eio`, and `plucky` are all primarily concerned with error composition, which is still possible to do with `checked-io`'s `IOE` (wrapped in a newtype to get automatic integration with any `MonadRunIOE` function):
+* `control-monad-exception`, `exceptions-checked`, `eio`, and `plucky` are all primarily concerned with error composition, which is still possible to do with `checked-io`'s `IOE`:
 
     ```hs
     {-- plucky --}
 
     data EitherE e1 e2 = LeftE e1 | RightE e2
-      deriving (Show)
-    instance (Exception e1, Exception e2) => Exception (EitherE e1 e2) where
-      displayException = \case
-        LeftE e1 -> displayException e1
-        RightE e2 -> displayException e2
-      fromException e =
-        (LeftE <$> fromException e) <|> (RightE <$> fromException e)
+      deriving (Show, Exception)
 
-    newtype IOE' e a = IOE' {unIOE' :: IOE e a}
+    toPlucked :: ProjectError e' e => IOE e a -> IOE e' a
+    toPlucked = mapExceptionM putError
 
-    instance ProjectError e' e => MonadRunIOE e (IOE' e') where
-      runIOE = IOE' . mapExceptionM putError
+    throwPlucked :: ProjectError e' e => e -> IOE e' a
+    throwPlucked = throw . putError
 
     catchOne ::
       Exception e =>
-      IOE' (EitherE e e') a ->
-      (e -> IOE' e' a) ->
-      IOE' e' a
-    catchOne (IOE' m) f = IOE' $ m `catch` go
-      where
-        go = \case
-          LeftE e -> unIOE' (f e)
-          RightE e -> throw e
+      IOE (EitherE e' e) a ->
+      (e -> IOE e' a) ->
+      IOE e' a
+    catchOne m f = m `catch` \case
+        LeftE e -> throw e
+        RightE e -> f e
 
-    f :: ProjectError GetEnvVarError e => IOE' e String
+    f :: ProjectError e GetEnvVarError => IOE e String
     f = getEnv "USER"
 
-    g :: ProjectError MyException e => String -> IOE' e ()
+    g :: ProjectError e MyException => String -> IOE e ()
 
-    -- inferred as:
-    --   (ProjectError GetEnvVarError e, ProjectError MyException e) =>
-    --   IOE' e ()
-    f >>= g
+    -- type checks
+    h ::
+      ( ProjectError e GetEnvVarError
+      , ProjectError MyException e
+      ) => IOE e ()
+    h = f >>= g
+
+    -- ghci infers as:
+    --   (ProjectError e' MyException, ProjectError e' MyException2) =>
+    --   String -> IOE e' ()
+    foo "bad" = throwPlucked MyException
+    foo "bad2" = throwPlucked MyException2
+    foo _ = pure ()
     ```
 
     ```hs
     {-- control-monad-exception + exceptions-checked --}
 
-    newtype IOE' e a = IOE' {unIOE' :: IOE SomeSyncException a}
+    newtype CheckedIO e a = CheckedIO {unCheckedIO :: IO a}
 
-    instance Throws e e' => MonadRunIOE e (IOE' e') where
-      runIOE = IOE' . liftE
+    toChecked :: Throws e l => IOE e a -> CheckedIO l a
+    toChecked = CheckedIO . mapExceptionM ExceptionIn
+
+    throwChecked :: Throws e l => e -> CheckedIO l a
+    throwChecked = CheckedIO . throw . ExceptionIn
 
     catchOne ::
-      Exception e =>
-      IOE' (Caught e e') a ->
-      (e -> IOE' e' a) ->
-      IOE e' a
-    catchOne (IOE' m) f = IOE' $ m `catch` unIOE' . f . go
-      where
-        go (SomeSyncException e) = fromJust $ cast e
+      (Exception e, Typeable l) =>
+      CheckedIO (Caught e l) a ->
+      (e -> CheckedIO l a) ->
+      CheckedIO l a
+    catchOne (CheckedIO m) f =
+      CheckedIO $ m `catch` (unCheckedIO . f . fromJust . fromSyncException)
 
-    f :: Throws GetEnvVarError e => IOE' e String
-    f = getEnv "USER"
+    f :: Throws GetEnvVarError e => CheckedIO e String
+    f = toChecked $ getEnv "USER"
 
-    g :: Throws MyException e => String -> IOE' e ()
+    g :: Throws MyException e => String -> CheckedIO e ()
 
-    -- inferred as:
-    --   (Throws GetEnvVarError e, Throws MyException e) =>
-    --   IOE' e ()
-    f >>= g
+    -- type checks
+    h :: (Throws GetEnvVarError e, Throws MyException e) => CheckedIO e ()
+    h = f >>= g
+
+    -- ghci infers as:
+    --   (Throws3 MyException l, Throws3 MyException2 l) =>
+    --   String -> CheckedIO3 l ()
+    foo "bad" = throwChecked MyException
+    foo "bad2" = throwChecked MyException2
+    foo _ = pure ()
     ```
 
     ```hs
     {-- eio --}
 
-    newtype IOE' es a = IOE' {unIOE' :: IOE SomeSyncException a}
+    newtype CheckedIO es a = CheckedIO {unCheckedIO :: IO a}
 
-    instance MonadRunIOE e (IOE' '[e]) where
-      runIOE = IOE' . liftE
+    instance MonadRunIOE e (CheckedIO '[e]) where
+      runIOE = CheckedIO . liftE
 
     catchOne ::
       Exception e =>
-      IOE' e1 a ->
-      (e -> IOE' e2 a) ->
-      IOE (Delete e (e1 <> e2)) a
-    catchOne (IOE' m) f = IOE' $ m `catch` unIOE' . f . go
-      where
-        go (SomeSyncException e) = fromJust $ cast e
+      CheckedIO e1 a ->
+      (e -> CheckedIO e2 a) ->
+      CheckedIO (Delete e (e1 <> e2)) a
+    catchOne (CheckedIO m) f =
+      CheckedIO $ m `catch` (unCheckedIO . f . fromJust . fromSyncException)
 
-    f :: IOE' [GetEnvVarError] String
+    f :: CheckedIO '[GetEnvVarError] String
     f = getEnv "USER"
 
-    g :: String -> IOE' [MyException] ()
+    g :: String -> CheckedIO '[MyException] ()
 
-    -- inferred as: IOE' [GetEnvVarError, MyException] ()
-    f EIO.>>= g
+    -- inferred as: CheckedIO '[GetEnvVarError, MyException] ()
+    h = f EIO.>>= g
     ```
 
     Note that all of these approaches are still possible with `checked-io`, but the advantage of `checked-io` is that it is backwards compatible with the current state of the Haskell ecosystem, while none of these approaches can provide a backwards-compatible `IO`-analogous type. I think implementing `checked-io` first is the best course of action, and we could take the second step of making one of these error composition approaches first class later.
@@ -362,8 +371,9 @@ f = getEnvIO "USER"
 
 g :: Throws MyException => String -> IO ()
 
--- inferred as: (Throws GetEnvVarError, Throws MyException) => IO ()
-f >>= g
+-- type checks
+h :: (Throws GetEnvVarError, Throws MyException) => IO ()
+h = f >>= g
 ```
 ```hs
 {-- option 2, with a newtype wrapper enforcing
@@ -374,8 +384,8 @@ newtype CheckedIO a = CheckedIO (IO a)
 unCheck :: CheckedIO a -> IO a
 unCheck (CheckedIO m) = m
 
-instance Throws e => MonadRunIOE e CheckedIO where
-  runIOE = CheckedIO . liftE
+toChecked :: (Exception e, Throws e) => IOE e a -> CheckedIO a
+toChecked = CheckedIO . liftE
 
 -- implemented same as blog post
 catchOne ::
@@ -385,12 +395,13 @@ catchOne ::
   CheckedIO a
 
 f :: Throws GetEnvVarError => CheckedIO String
-f = getEnv "USER"
+f = toChecked $ getEnv "USER"
 
 g :: Throws MyException => String -> CheckedIO ()
 
--- inferred as: (Throws GetEnvVarError, Throws MyException) => CheckedIO ()
-f >>= g
+-- type checks
+h :: (Throws GetEnvVarError, Throws MyException) => CheckedIO ()
+h = f >>= g
 ```
 
 But analyzing the overall approach, I see the following issues with it:
