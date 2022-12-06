@@ -199,8 +199,8 @@ Here's one possible migration plan for migrating `base` to using checked excepti
         * `getEnvIO = <old getEnv implementation>; getEnv = getEnvIO`
     1. Add functions with more precise types, e.g.
         * `tryIOE :: IOE e a -> IOE e' (Either e a)`
-        * `getEnvIOE :: String -> IOE GetEnvError String`
-        * `getEnvUIO :: String -> UIO (Either GetEnvError String)`
+        * `getEnvIOE :: String -> IOE GetEnvVarError String`
+        * `getEnvUIO :: String -> UIO (Either GetEnvVarError String)`
     1. (Optional) Add general functions
         * `MonadRunAsIOE` + `MonadCatchIO`
         * `tryM :: (MonadCatchIO e ioe, MonadRunIOE e' ioe') => ioe a -> ioe' (Either e a)`
@@ -259,7 +259,7 @@ All of these approaches would still be possible (and even improved) if `checked-
 
     newtype IOE' e a = IOE' {unIOE' :: IOE e a}
 
-    instance ProjectError e' e => MonadRunIOE e (IOE' e' a) where
+    instance ProjectError e' e => MonadRunIOE e (IOE' e') where
       runIOE = IOE' . mapExceptionM putError
 
     catchOne ::
@@ -273,13 +273,13 @@ All of these approaches would still be possible (and even improved) if `checked-
           LeftE e -> unIOE' (f e)
           RightE e -> throw e
 
-    f :: ProjectError GetEnvError e => IOE' e String
+    f :: ProjectError GetEnvVarError e => IOE' e String
     f = getEnv "USER"
 
     g :: ProjectError MyException e => String -> IOE' e ()
 
     -- inferred as:
-    --   (ProjectError GetEnvError e, ProjectError MyException e) =>
+    --   (ProjectError GetEnvVarError e, ProjectError MyException e) =>
     --   IOE' e ()
     f >>= g
     ```
@@ -289,7 +289,7 @@ All of these approaches would still be possible (and even improved) if `checked-
 
     newtype IOE' e a = IOE' {unIOE' :: IOE SomeSyncException a}
 
-    instance Throws e e' => MonadRunIOE e (IOE' e' a) where
+    instance Throws e e' => MonadRunIOE e (IOE' e') where
       runIOE = IOE' . liftE
 
     catchOne ::
@@ -301,13 +301,13 @@ All of these approaches would still be possible (and even improved) if `checked-
       where
         go (SomeSyncException e) = fromJust $ cast e
 
-    f :: Throws GetEnvError e => IOE' e String
+    f :: Throws GetEnvVarError e => IOE' e String
     f = getEnv "USER"
 
     g :: Throws MyException e => String -> IOE' e ()
 
     -- inferred as:
-    --   (Throws GetEnvError e, Throws MyException e) =>
+    --   (Throws GetEnvVarError e, Throws MyException e) =>
     --   IOE' e ()
     f >>= g
     ```
@@ -317,7 +317,7 @@ All of these approaches would still be possible (and even improved) if `checked-
 
     newtype IOE' es a = IOE' {unIOE' :: IOE SomeSyncException a}
 
-    instance MonadRunIOE e (IOE' '[e] a) where
+    instance MonadRunIOE e (IOE' '[e]) where
       runIOE = IOE' . liftE
 
     catchOne ::
@@ -329,12 +329,12 @@ All of these approaches would still be possible (and even improved) if `checked-
       where
         go (SomeSyncException e) = fromJust $ cast e
 
-    f :: IOE' [GetEnvError] String
+    f :: IOE' [GetEnvVarError] String
     f = getEnv "USER"
 
     g :: String -> IOE' [MyException] ()
 
-    -- inferred as: IOE' [GetEnvError, MyException] ()
+    -- inferred as: IOE' [GetEnvVarError, MyException] ()
     f EIO.>>= g
     ```
 
@@ -357,12 +357,12 @@ catchOne ::
   (e -> IO a) ->
   IO a
 
-f :: Throws GetEnvError => IO String
+f :: Throws GetEnvVarError => IO String
 f = getEnvIO "USER"
 
 g :: Throws MyException => String -> IO ()
 
--- inferred as: (Throws GetEnvError, Throws MyException) => IO ()
+-- inferred as: (Throws GetEnvVarError, Throws MyException) => IO ()
 f >>= g
 ```
 ```hs
@@ -384,12 +384,12 @@ catchOne ::
   (e -> CheckedIO a) ->
   CheckedIO a
 
-f :: Throws GetEnvError => CheckedIO String
+f :: Throws GetEnvVarError => CheckedIO String
 f = getEnv "USER"
 
 g :: Throws MyException => String -> CheckedIO ()
 
--- inferred as: (Throws GetEnvError, Throws MyException) => CheckedIO ()
+-- inferred as: (Throws GetEnvVarError, Throws MyException) => CheckedIO ()
 f >>= g
 ```
 
